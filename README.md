@@ -62,6 +62,7 @@ flowchart LR
 - **Backend:** Python (API REST y worker como servicios systemd en Amazon Linux 2023).
 - **Frontend:** HTML, CSS y JavaScript estáticos servidos por CloudFront.
 - **Desarrollo local:** Docker Compose con MySQL y DynamoDB Local.
+- **Integración continua:** GitHub Actions.
 
 ## Estructura del repositorio (prevista)
 
@@ -121,6 +122,7 @@ Tablero: [GitHub Projects](https://github.com/users/Alejandroperezgarc1a/project
 | A9 | Guía de despliegue y solución de problemas; completar "Cómo desplegar" del README | A | Mié 11 | 4 | C3 |
 | B10 | Diagrama de arquitectura y justificación RDS vs. DynamoDB | B | Mié 11 | 4 | C3 |
 | C4 | Despliegue desde cero en cuenta limpia | Ambos | Jue 12 | 2 + 2 | C3 |
+| C5 | CI con GitHub Actions (Terraform, pruebas en Python 3.9, ShellCheck, empaquetado) | A | Mié 4 – Dom 8 | 2 | C1 |
 
 ## Cómo desplegar
 
@@ -131,3 +133,4 @@ En construcción (tarea A9).
 - Una rama por tarea: `feat/<ID>-descripcion` (por ejemplo `feat/A2-modulo-network`).
 - Commits en formato Conventional Commits con el ID de la tarea: `feat(network): A2 subredes privadas en 2 AZ`.
 - Cada PR lo revisa el otro integrante y cierra su issue con `Closes #n`.
+- Cada PR debe pasar el CI (GitHub Actions): formato y validación de Terraform, pruebas en Python 3.9, ShellCheck y empaquetado. `main` no acepta merges con checks en rojo.
