@@ -94,7 +94,7 @@ docs/               arquitectura, RDS vs. DynamoDB y guía de despliegue
 
 ## Tareas
 
-Tablero: [GitHub Projects](<!-- URL del tablero -->)
+Tablero: [GitHub Projects](https://github.com/users/Alejandroperezgarc1a/projects/5)
 
 | ID | Tarea | Responsable | Fechas | Horas | Depende de |
 | --- | --- | --- | --- | --- | --- |
