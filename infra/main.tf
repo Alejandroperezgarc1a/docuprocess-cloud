@@ -1,0 +1,68 @@
+# Módulo raíz de DocuProcess Cloud.
+# Las credenciales NO están aquí: se leen de ~/.aws/credentials (copiadas de AWS Academy en cada sesión).
+
+provider "aws" {
+  region = var.aws_region
+
+  default_tags {
+    tags = local.common_tags
+  }
+}
+
+# awscc no soporta default_tags: los módulos le pasan local.common_tags explícitamente.
+provider "awscc" {
+  region = var.aws_region
+}
+
+data "aws_caller_identity" "current" {}
+
+# El instance profile del rol preexistente tiene un nombre generado distinto en cada cuenta
+# (…-SsmRoleInstanceProfile-…). Se descubre a partir del nombre del rol con
+# iam:ListInstanceProfilesForRole, que el Sandbox permite. No se usa data "aws_iam_role".
+data "aws_iam_instance_profiles" "app" {
+  role_name = var.instance_role_name
+
+  lifecycle {
+    postcondition {
+      condition     = length(self.names) > 0
+      error_message = "El rol ${var.instance_role_name} no tiene ningún instance profile en esta cuenta."
+    }
+  }
+}
+
+locals {
+  name_prefix = "${var.project_name}-${var.environment}"
+  account_id  = data.aws_caller_identity.current.account_id
+
+  common_tags = {
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
+
+  instance_profile_name = tolist(data.aws_iam_instance_profiles.app.names)[0]
+
+  # ARN construido (sin consultar IAM). Los recursos de datos lo usan en sus políticas
+  # basadas en recursos, porque el rol solo tiene permisos de SSM.
+  app_role_arn = "arn:aws:iam::${local.account_id}:role/${var.instance_role_name}"
+}
+
+# -----------------------------------------------------------------------------
+# Módulos. Cada tarea agrega su bloque en su propia sección para evitar conflictos de merge.
+# -----------------------------------------------------------------------------
+
+# --- network (A2)
+
+# --- storage (B2)
+
+# --- dynamodb (B3)
+
+# --- sns (B4)
+
+# --- rds (A5)
+
+# --- compute (A3) + userData y artefacto (A4)
+
+# --- cdn (B5)
+
+# --- monitoring (B9)
