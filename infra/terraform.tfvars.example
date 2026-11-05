@@ -1,0 +1,19 @@
+# Copiar a terraform.tfvars (ignorado por git) y completar.
+#   cp terraform.tfvars.example terraform.tfvars
+
+# Obligatorias
+alert_email = "equipo@example.com"
+db_password = "CAMBIAR-minimo-12-caracteres" # openssl rand -hex 16
+jwt_secret  = "CAMBIAR-minimo-32-caracteres-xxxxxxxxxx" # openssl rand -hex 32
+
+# Opcionales (valores por defecto)
+# aws_region                 = "us-east-1"
+# project_name               = "docuprocess"
+# environment                = "dev"
+# instance_type              = "t3.micro"
+# asg_min_size               = 2
+# asg_max_size               = 4
+# asg_desired_capacity       = 2
+# cpu_target_value           = 60
+# enable_nat_gateway         = false
+# enable_interface_endpoints = true
