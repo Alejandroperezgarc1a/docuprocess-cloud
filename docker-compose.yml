@@ -1,0 +1,41 @@
+# Entorno de desarrollo local de DocuProcess Cloud.
+# Levanta MySQL (equivalente a RDS) y DynamoDB Local para desarrollar la API y el worker sin AWS.
+#
+#   cp .env.example .env      # y completar las contraseñas
+#   docker compose up -d
+#
+# La tabla de DynamoDB Local se crea con el comando de docs/architecture.md (sección 13).
+
+name: docuprocess
+
+services:
+  mysql:
+    # Misma versión mayor que el RDS (engine_version 8.0)
+    image: mysql:8.0.40
+    container_name: docuprocess-mysql
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-docuprocess}
+      MYSQL_USER: ${DB_USER:-docuadmin}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Define MYSQL_ROOT_PASSWORD en .env}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  dynamodb:
+    image: amazon/dynamodb-local:2.5.2
+    container_name: docuprocess-dynamodb
+    # -inMemory: datos efímeros (se pierden al detener); -sharedDb: una sola base sin importar región/credenciales
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
+    ports:
+      # 8001 en el host para dejar libre el 8000, que usa la API
+      - "8001:8000"
+
+volumes:
+  mysql-data:
