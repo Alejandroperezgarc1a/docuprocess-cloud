@@ -17,3 +17,8 @@ output "app_role_arn" {
   description = "ARN del rol de las instancias; lo usan las políticas basadas en recursos."
   value       = local.app_role_arn
 }
+
+output "vpc_id" {
+  description = "VPC de la aplicación (A2)."
+  value       = module.network.vpc_id
+}
