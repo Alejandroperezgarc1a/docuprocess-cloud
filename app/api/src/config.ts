@@ -1,0 +1,87 @@
+export interface Config {
+  docsBucket: string;
+  ddbTable: string;
+  dbHost: string;
+  dbPort: number;
+  dbName: string;
+  dbUser: string;
+  dbPassword: string;
+  jwtSecret: string;
+  awsRegion: string;
+  ddbEndpointUrl?: string;
+  corsAllowedOrigins: readonly string[];
+}
+
+const REQUIRED_ENV = [
+  'DOCS_BUCKET',
+  'DDB_TABLE',
+  'DB_HOST',
+  'DB_NAME',
+  'DB_USER',
+  'DB_PASSWORD',
+  'JWT_SECRET',
+  'AWS_REGION',
+] as const;
+
+export class ConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConfigError';
+  }
+}
+
+export function loadConfig(
+  env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
+): Config {
+  const values: Record<string, string> = {};
+  const missing: string[] = [];
+
+  for (const name of REQUIRED_ENV) {
+    const raw = env[name];
+    if (raw === undefined || raw.trim() === '') {
+      missing.push(name);
+    } else {
+      values[name] = raw;
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new ConfigError(
+      `Faltan variables de entorno obligatorias: ${[...missing].sort().join(', ')}`,
+    );
+  }
+
+  const jwtSecret = values.JWT_SECRET ?? '';
+  if (jwtSecret.length < 32) {
+    throw new ConfigError('JWT_SECRET debe tener al menos 32 caracteres');
+  }
+
+  const portRaw = (env.DB_PORT ?? '3306').trim();
+  const dbPort = Number(portRaw);
+  if (!Number.isInteger(dbPort)) {
+    throw new ConfigError('DB_PORT debe ser un numero entero');
+  }
+  if (dbPort < 1 || dbPort > 65535) {
+    throw new ConfigError('DB_PORT debe estar entre 1 y 65535');
+  }
+
+  const ddbEndpointUrl = (env.DDB_ENDPOINT_URL ?? '').trim() || undefined;
+  const corsAllowedOrigins = (env.CORS_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+
+  return {
+    docsBucket: (values.DOCS_BUCKET ?? '').trim(),
+    ddbTable: (values.DDB_TABLE ?? '').trim(),
+    dbHost: (values.DB_HOST ?? '').trim(),
+    dbPort,
+    dbName: (values.DB_NAME ?? '').trim(),
+    dbUser: (values.DB_USER ?? '').trim(),
+    dbPassword: values.DB_PASSWORD ?? '',
+    jwtSecret,
+    awsRegion: (values.AWS_REGION ?? '').trim(),
+    ddbEndpointUrl,
+    corsAllowedOrigins,
+  };
+}

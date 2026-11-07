@@ -13,6 +13,12 @@ override.tf.json
 *.tfplan
 # .terraform.lock.hcl SÍ se versiona
 
+# Node
+node_modules/
+dist/
+coverage/
+*.log
+
 # Python
 __pycache__/
 *.py[cod]
