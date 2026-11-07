@@ -22,3 +22,8 @@ output "vpc_id" {
   description = "VPC de la aplicación (A2)."
   value       = module.network.vpc_id
 }
+
+output "rds_endpoint" {
+  description = "Nombre DNS de la base MySQL (A5). Solo es alcanzable desde la app."
+  value       = module.rds.db_address
+}
