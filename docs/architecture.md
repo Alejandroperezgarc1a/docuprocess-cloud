@@ -29,7 +29,7 @@
 
 | Variable | Origen en AWS | Usa | Local (`.env`) |
 | --- | --- | --- | --- |
-| `DOCS_BUCKET` | `module.storage.docs_bucket_name` | API, worker | bucket real o vacío |
+| `DOCS_BUCKET` | `module.storage.docs_bucket_name` | API, worker | bucket real (obligatorio para la API) |
 | `DDB_TABLE` | `module.dynamodb.table_name` | API, worker | `documents` |
 | `SNS_TOPIC_ARN` | `module.sns.topic_arn` | worker | vacío (solo log) |
 | `DB_HOST` | `module.rds.db_address` | API | `127.0.0.1` |
@@ -46,6 +46,7 @@
 
 Reglas:
 - La aplicación **falla al arrancar** si falta una variable obligatoria (configuración por entorno, al estilo 12-factor).
+- `DOCS_BUCKET` no puede estar vacío: la API falla al arrancar (A6).
 - boto3 recibe `region_name=os.environ["AWS_REGION"]` explícitamente.
 - Si `DDB_ENDPOINT_URL` está definida, se pasa como `endpoint_url` al cliente de DynamoDB.
 - En AWS, las credenciales vienen del instance profile vía IMDSv2; nunca se escriben en código ni en archivos.
