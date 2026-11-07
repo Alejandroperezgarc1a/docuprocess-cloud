@@ -60,7 +60,7 @@ flowchart LR
 
 - **Infraestructura:** Terraform y AWS (VPC, ALB, EC2 Auto Scaling, RDS MySQL, S3, DynamoDB, SNS, CloudFront, CloudWatch y CloudTrail).
 - **Backend:** Node.js 24 + TypeScript (API REST con Express 5; worker de procesamiento previsto en Node.js) como servicios systemd en Amazon Linux 2023.
-- **Frontend:** HTML, CSS y JavaScript estáticos servidos por CloudFront.
+- **Frontend:** HTML, CSS y JavaScript con Vite; build estático servido por CloudFront.
 - **Desarrollo local:** Docker Compose con MySQL y DynamoDB Local.
 - **Integración continua:** GitHub Actions.
 
@@ -95,6 +95,74 @@ El tablero de [GitHub Projects](https://github.com/users/Alejandroperezgarc1a/pr
 ## Cómo desplegar
 
 En construcción (tarea A9).
+
+## Desarrollo local
+
+### Backend
+
+```bash
+cp .env.example .env          # completar DB_PASSWORD, MYSQL_ROOT_PASSWORD, JWT_SECRET y DOCS_BUCKET
+docker compose up -d
+
+# Crear la tabla documents con el comando de docs/architecture.md, sección 13.
+
+cd app/api
+npm ci
+npm run build
+set -a; . ../../.env; set +a
+PORT=8000 WEB_CONCURRENCY=2 node dist/server.js
+```
+
+En desarrollo con recarga automática: `npm run dev`.
+
+Swagger UI: `http://localhost:8000/api/docs`.
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+El frontend queda en `http://localhost:5500`. Vite reenvía `/api` a
+`http://localhost:8000`, así que no hace falta CORS en desarrollo.
+
+Para probar el build de producción:
+
+```bash
+cd frontend
+npm ci
+npm run build      # genera frontend/dist/
+npm run preview    # sirve dist/ en http://127.0.0.1:4173
+```
+
+El despliegue debe subir `frontend/dist/`, no el código fuente.
+
+#### CORS del bucket de documentos
+
+El `PUT` a S3 es directo desde el navegador. El bucket debe permitir el
+origen local y, en producción, el dominio de CloudFront:
+
+```bash
+aws s3api put-bucket-cors \
+  --bucket "$DOCS_BUCKET" \
+  --cors-configuration '{
+    "CORSRules": [{
+      "AllowedOrigins": [
+        "http://localhost:5500",
+        "http://127.0.0.1:5500"
+      ],
+      "AllowedMethods": ["PUT", "GET", "HEAD"],
+      "AllowedHeaders": ["Content-Type"],
+      "ExposeHeaders": ["ETag"],
+      "MaxAgeSeconds": 3000
+    }]
+  }'
+```
+
+En Terraform esto corresponde al módulo de storage (B2) y al dominio de
+CloudFront (B5).
 
 ## Cómo trabajamos
 

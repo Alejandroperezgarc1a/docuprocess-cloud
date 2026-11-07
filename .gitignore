@@ -21,6 +21,8 @@ coverage/
 
 # Secretos y artefactos generados
 .env
+.env.local
+frontend/.env.local
 frontend/config.js
 
 # Editores

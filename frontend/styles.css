@@ -212,7 +212,7 @@ button {
 }
 
 .page {
-  width: min(1080px, 100%);
+  width: min(1800px, 100%);
   margin: 0 auto;
   padding: clamp(1.25rem, 4vw, 3rem) clamp(1rem, 4vw, 2.5rem) 2rem;
   flex: 1;
@@ -247,6 +247,8 @@ button {
 .auth {
   display: grid;
   grid-template-columns: minmax(0, 1.02fr) minmax(340px, 0.98fr);
+  max-width: 1080px;
+  margin-inline: auto;
   min-height: min(660px, calc(100vh - 12rem));
   overflow: hidden;
   border: 1px solid var(--line);
@@ -541,8 +543,8 @@ button {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(280px, 0.82fr) minmax(0, 1.18fr);
-  gap: 1.25rem;
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  gap: 1.5rem;
   align-items: start;
 }
 

@@ -38,7 +38,12 @@ export function createAwsService(config: Config): AwsService {
   const ddb = DynamoDBDocumentClient.from(ddbClient, {
     marshallOptions: { removeUndefinedValues: true },
   });
-  const s3 = new S3Client({ region: config.awsRegion, maxAttempts: 2 });
+  const s3 = new S3Client({
+    region: config.awsRegion,
+    maxAttempts: 2,
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
+  });
 
   return {
     /** Reads a fixed key to confirm that DynamoDB responds. */
@@ -98,7 +103,7 @@ export function createAwsService(config: Config): AwsService {
           Key: key,
           ContentType: contentType,
         }),
-        { expiresIn: PRESIGN_EXPIRES_SECONDS },
+        { expiresIn: PRESIGN_EXPIRES_SECONDS, signableHeaders: new Set(['content-type']) },
       );
     },
   };

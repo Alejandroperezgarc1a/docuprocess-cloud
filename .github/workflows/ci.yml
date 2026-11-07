@@ -26,6 +26,7 @@ jobs:
     outputs:
       infra: ${{ steps.d.outputs.infra }}
       node: ${{ steps.d.outputs.node }}
+      frontend: ${{ steps.d.outputs.frontend }}
       scripts: ${{ steps.d.outputs.scripts }}
       package: ${{ steps.d.outputs.package }}
     steps:
@@ -36,6 +37,7 @@ jobs:
           {
             echo "infra=$(has 'infra/*.tf')"
             echo "node=$(has 'app/*/package.json')"
+            echo "frontend=$(has 'frontend/package.json')"
             echo "scripts=$(has 'scripts/*.sh')"
             echo "package=$(has 'scripts/package-app.sh')"
           } | tee -a "$GITHUB_OUTPUT"
@@ -107,6 +109,26 @@ jobs:
         working-directory: app/${{ matrix.component }}
         run: |
           if [ -d tests ]; then npm test; else echo "Sin carpeta tests/ todavía"; fi
+
+  frontend:
+    name: Frontend (Vite build)
+    needs: detect
+    if: needs.detect.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Dependencias
+        run: npm ci
+      - name: Build
+        run: npm run build
 
   shellcheck:
     name: ShellCheck

@@ -30,7 +30,7 @@
 
 | Variable | Origen en AWS | Usa | Local (`.env`) |
 | --- | --- | --- | --- |
-| `DOCS_BUCKET` | `module.storage.docs_bucket_name` | API, worker | bucket real o vacío |
+| `DOCS_BUCKET` | `module.storage.docs_bucket_name` | API, worker | bucket real (obligatorio para la API) |
 | `DDB_TABLE` | `module.dynamodb.table_name` | API, worker | `documents` |
 | `SNS_TOPIC_ARN` | `module.sns.topic_arn` | worker | vacío (solo log) |
 | `DB_HOST` | `module.rds.db_address` | API | `127.0.0.1` |
@@ -47,6 +47,7 @@
 
 Reglas:
 - La aplicación **falla al arrancar** si falta una variable obligatoria (configuración por entorno, al estilo 12-factor).
+- `DOCS_BUCKET` no puede estar vacío: la API falla al arrancar.
 - El AWS SDK v3 recibe `region: config.awsRegion` explícitamente.
 - Si `DDB_ENDPOINT_URL` está definida, se pasa como `endpoint_url` al cliente de DynamoDB.
 - En AWS, las credenciales vienen del instance profile vía IMDSv2; nunca se escriben en código ni en archivos.
@@ -184,3 +185,13 @@ docker compose down -v          # además borrar los datos de MySQL
 ```
 
 DynamoDB Local acepta cualquier credencial; las de arriba (`local`) evitan usar por accidente las del Sandbox.
+
+### 14. Integración frontend/API
+
+- **Desarrollo:** Vite sirve el frontend en `http://localhost:5500` y reenvía `/api` a `http://localhost:8000`; el navegador ve un solo origen y no requiere CORS para la API.
+- **Producción:** CloudFront sirve `frontend/dist/` en la raíz y enruta `/api/*` al ALB. El frontend usa rutas relativas. El behavior de `/api/*` no debe cachear y debe reenviar `Authorization`, `Content-Type` y `Origin`.
+- **Build:** `npm ci && npm run build` en `frontend/`; se publica `frontend/dist/`, no el código fuente.
+- **CORS del bucket de documentos:** el `PUT` de la URL prefirmada va directo del navegador a S3. El bucket debe permitir `PUT`, `GET` y `HEAD` desde `http://localhost:5500`, `http://127.0.0.1:5500` y el dominio de CloudFront, con `AllowedHeaders: ["Content-Type"]`.
+- **Health del ALB:** el target group debe apuntar a `GET /api/health`.
+
+El CORS del bucket y el behavior de CloudFront se implementan en B2/B5; el health check en A3.
