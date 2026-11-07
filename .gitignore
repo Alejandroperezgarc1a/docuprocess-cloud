@@ -25,7 +25,9 @@ htmlcov/
 
 # Artefactos generados
 dist/
-frontend/config.js
+node_modules/
+.env.local
+frontend/.env.local
 
 # Editores
 .vscode/
