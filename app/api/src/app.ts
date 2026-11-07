@@ -9,6 +9,7 @@ import { createAwsService } from './aws.js';
 import type { Config } from './config.js';
 import type { Db } from './db.js';
 import { createDb } from './db.js';
+import { registerDocumentRoutes } from './documents.js';
 import { HTTP_ERRORS, errorResponse } from './errors.js';
 
 export interface AppDependencies {
@@ -179,6 +180,7 @@ export function createApp({
 
   app.get('/api/health', healthHandler(config, db, aws));
   registerAuthRoutes(app, config, db);
+  registerDocumentRoutes(app, config, aws);
 
   app.use(notFoundOrMethodNotAllowed());
   app.use(errorHandler());
