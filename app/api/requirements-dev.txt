@@ -1,0 +1,5 @@
+# Dependencias solo para desarrollo y pruebas.
+# No se vendorizan en el artefacto de A4.
+-r requirements.txt
+pytest==8.4.2
+moto==5.1.22
