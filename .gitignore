@@ -19,18 +19,8 @@ dist/
 coverage/
 *.log
 
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
+# Secretos y artefactos generados
 .env
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Artefactos generados
-dist/
 frontend/config.js
 
 # Editores

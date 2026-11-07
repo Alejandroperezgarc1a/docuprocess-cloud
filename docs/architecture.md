@@ -6,21 +6,22 @@
 
 ### 1. API: framework y ejecución
 
-- **Flask 3 + gunicorn**, escuchando en `0.0.0.0:8000` con 2 workers síncronos.
-- Por qué Flask y no FastAPI:
-  - La API es pequeña y síncrona: boto3 y PyMySQL son bloqueantes, así que FastAPI (asíncrono) no aportaría rendimiento sin cambiar de librerías.
-  - Tiene menos dependencias compiladas que vendorizar para Python 3.9 (A4).
-  - gunicorn es un servidor maduro y simple de operar con systemd.
-- **Python 3.9** en las instancias (Amazon Linux 2023). El código debe ser compatible: sin `match`, sin `X | None` evaluado en tiempo de ejecución y con `from __future__ import annotations` si se usan anotaciones modernas.
+- **Express 5 sobre Node.js 24 + TypeScript**, escuchando en `0.0.0.0:8000` con 2 workers (cluster).
+- Por qué Express y no Fastify:
+  - La API es pequeña y el equipo ya conoce Express; Express 5 reenvía automáticamente los errores de handlers `async`.
+  - Todas las dependencias son JavaScript puro (sin binarios nativos), lo que simplifica el empaquetado de A4.
+  - El cluster de Node replica los 2 workers síncronos del diseño anterior.
+- **Node.js 24** en las instancias (paquete `nodejs24` de Amazon Linux 2023).
 
 ### 2. Servicios en las instancias
 
 | Elemento | Valor |
 | --- | --- |
 | Código | `/opt/docuprocess/{api,worker}` |
-| Entorno virtual | `/opt/docuprocess/venv` |
+| Entorno de ejecución | `/opt/docuprocess/api/dist` + `/opt/docuprocess/api/node_modules` (vendorizado) |
 | Configuración | `/etc/docuprocess.env` (permisos 600, dueño root) |
 | Unidades systemd | `docuprocess-api.service`, `docuprocess-worker.service` (`EnvironmentFile=/etc/docuprocess.env`, `Restart=always`) |
+| Arranque de la API | `node /opt/docuprocess/api/dist/server.js` con `WEB_CONCURRENCY=2` |
 | Usuario del sistema | `docuprocess` |
 | Logs | stdout/stderr → journald (`journalctl -u docuprocess-api`) |
 | Log del arranque | `/var/log/docuprocess-userdata.log` |
@@ -46,7 +47,7 @@
 
 Reglas:
 - La aplicación **falla al arrancar** si falta una variable obligatoria (configuración por entorno, al estilo 12-factor).
-- boto3 recibe `region_name=os.environ["AWS_REGION"]` explícitamente.
+- El AWS SDK v3 recibe `region: config.awsRegion` explícitamente.
 - Si `DDB_ENDPOINT_URL` está definida, se pasa como `endpoint_url` al cliente de DynamoDB.
 - En AWS, las credenciales vienen del instance profile vía IMDSv2; nunca se escriben en código ni en archivos.
 
@@ -156,7 +157,7 @@ La app **no** debe usar operaciones de listado de cuenta (`ListBuckets`, `ListTa
 | El instance profile tiene un nombre generado (`…-SsmRoleInstanceProfile-…`) distinto en cada cuenta | Se descubre con `data "aws_iam_instance_profiles"` a partir del nombre del rol; nunca `data "aws_iam_role"` |
 | `RunInstances` con volúmenes **gp3** → *explicit deny* (la AMI AL2023 trae gp3) | Disco raíz forzado a **gp2** |
 | `s3:GetBucketObjectLockConfiguration` → *explicit deny*; `aws_s3_bucket` falla (providers 4.x, 5.x y 6.x) | Buckets con `awscc_s3_bucket` + sub-recursos de `aws` + vaciado al destruir (`scripts/empty-bucket.sh`) |
-| Sin NAT no hay STS ni internet; SSM, S3, DynamoDB, SNS y `dnf` funcionan por endpoints | `enable_nat_gateway = false`; dependencias de Python empaquetadas en el artefacto |
+| Sin NAT no hay STS ni internet; SSM, S3, DynamoDB, SNS y `dnf` funcionan por endpoints | `enable_nat_gateway = false`; dependencias de Node.js (`node_modules`) empaquetadas en el artefacto |
 | La topic policy de SNS no acepta `sns:*`; `s3:HeadObject` no es una acción válida | Listar acciones concretas en las políticas |
 
 ### 13. Desarrollo local
