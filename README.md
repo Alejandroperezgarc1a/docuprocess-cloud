@@ -128,6 +128,71 @@ Tablero: [GitHub Projects](https://github.com/users/Alejandroperezgarc1a/project
 
 En construcción (tarea A9).
 
+## Desarrollo local
+
+### Backend
+
+```bash
+cp .env.example .env          # completar DB_PASSWORD, MYSQL_ROOT_PASSWORD, JWT_SECRET y DOCS_BUCKET
+docker compose up -d
+
+# Crear la tabla documents con el comando de docs/architecture.md, sección 13.
+
+cd app/api
+python3.9 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+set -a; . ../../.env; set +a
+gunicorn --workers 2 --bind 0.0.0.0:8000 \
+  --access-logfile - --error-logfile - app:app
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+El frontend queda en `http://localhost:5500`. Vite reenvía `/api` a
+`http://localhost:8000`, así que no hace falta CORS en desarrollo.
+
+Para probar el build de producción:
+
+```bash
+cd frontend
+npm run build      # genera frontend/dist/
+npm run preview    # sirve dist/ en http://127.0.0.1:4173
+```
+
+El despliegue debe subir `frontend/dist/`, no el código fuente.
+
+#### CORS del bucket de documentos
+
+El `PUT` a S3 es directo desde el navegador. El bucket debe permitir el
+origen local y, en producción, el dominio de CloudFront:
+
+```bash
+aws s3api put-bucket-cors \
+  --bucket "$DOCS_BUCKET" \
+  --cors-configuration '{
+    "CORSRules": [{
+      "AllowedOrigins": [
+        "http://localhost:5500",
+        "http://127.0.0.1:5500"
+      ],
+      "AllowedMethods": ["PUT", "GET", "HEAD"],
+      "AllowedHeaders": ["Content-Type"],
+      "ExposeHeaders": ["ETag"],
+      "MaxAgeSeconds": 3000
+    }]
+  }'
+```
+
+En Terraform esto corresponde al módulo de storage (B2) y al dominio de
+CloudFront (B5).
+
 ## Cómo trabajamos
 
 - Una rama por tarea: `feat/<ID>-descripcion` (por ejemplo `feat/A2-modulo-network`).

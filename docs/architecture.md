@@ -184,3 +184,13 @@ docker compose down -v          # además borrar los datos de MySQL
 ```
 
 DynamoDB Local acepta cualquier credencial; las de arriba (`local`) evitan usar por accidente las del Sandbox.
+
+### 14. Integración frontend/API
+
+- **Desarrollo:** Vite sirve el frontend en `http://localhost:5500` y reenvía `/api` a `http://localhost:8000`; el navegador ve un solo origen y no requiere CORS para la API.
+- **Producción:** CloudFront sirve `frontend/dist/` en la raíz y enruta `/api/*` al ALB. El frontend usa rutas relativas (`apiBaseUrl` vacío). El behavior de `/api/*` no debe cachear y debe reenviar `Authorization`, `Content-Type` y `Origin`.
+- **Build:** `npm ci && npm run build` en `frontend/`; se publica `frontend/dist/`, no el código fuente.
+- **CORS del bucket de documentos:** el `PUT` de la URL prefirmada va directo del navegador a S3. El bucket debe permitir `PUT`, `GET` y `HEAD` desde `http://localhost:5500`, `http://127.0.0.1:5500` y el dominio de CloudFront, con `AllowedHeaders: ["Content-Type"]`.
+- **Health del ALB:** el target group debe apuntar a `GET /api/health`.
+
+El CORS del bucket y el behavior de CloudFront se implementan en B2/B5; el health check en A3.
