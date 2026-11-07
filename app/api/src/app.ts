@@ -3,6 +3,7 @@ import express, {
   type Express,
   type RequestHandler,
 } from 'express';
+import { registerAuthRoutes } from './auth.js';
 import type { AwsService } from './aws.js';
 import { createAwsService } from './aws.js';
 import type { Config } from './config.js';
@@ -177,6 +178,7 @@ export function createApp({
   );
 
   app.get('/api/health', healthHandler(config, db, aws));
+  registerAuthRoutes(app, config, db);
 
   app.use(notFoundOrMethodNotAllowed());
   app.use(errorHandler());
