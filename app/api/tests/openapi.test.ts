@@ -25,4 +25,13 @@ describe('openapi', () => {
     assert.equal(response.status, 200);
     assert.match(response.text, /swagger-ui/i);
   });
+
+  it('redirige /api/docs a /api/docs/', async () => {
+    const { app } = makeApp();
+
+    const response = await request(app).get('/api/docs');
+
+    assert.equal(response.status, 301);
+    assert.equal(response.headers.location, '/api/docs/');
+  });
 });
