@@ -1,12 +1,12 @@
-# API de DocuProcess Cloud (A6)
+# API de DocuProcess Cloud (B4)
 
-API REST en Flask con autenticación MySQL/bcrypt/JWT y documentos en
-DynamoDB + S3 mediante URLs prefirmadas. Toda la configuración se lee de
-variables de entorno; no hay secretos en el código.
+API REST en **Node.js 24 + TypeScript** (Express 5) con autenticación MySQL/bcrypt/JWT y
+gestión de documentos en DynamoDB + S3 mediante URLs prefirmadas. Toda la configuración
+se lee de variables de entorno; no hay secretos en el código.
 
 ## Requisitos
 
-- Python 3.9 (Amazon Linux 2023).
+- Node.js 24 (Amazon Linux 2023: paquetes `nodejs24` y `nodejs24-npm`).
 - MySQL 8.0 y DynamoDB Local de `docker-compose.yml` para desarrollo.
 - Credenciales del Sandbox de AWS para probar la URL prefirmada contra S3.
 
@@ -14,14 +14,8 @@ variables de entorno; no hay secretos en el código.
 
 ```bash
 cd app/api
-python3.9 -m venv .venv
-. .venv/bin/activate
-
-# Producción
-pip install -r requirements.txt
-
-# Desarrollo y pruebas
-pip install -r requirements-dev.txt
+npm ci
+npm run build
 ```
 
 ## Variables de entorno
@@ -36,8 +30,6 @@ set -a
 set +a
 
 # DOCS_BUCKET es obligatorio y no puede estar vacío.
-# Para probar solo autenticación puede usarse un nombre ficticio; el PUT a S3
-# fallará hasta usar un bucket real del Sandbox.
 export AWS_ACCESS_KEY_ID=...
 export AWS_SECRET_ACCESS_KEY=...
 export AWS_SESSION_TOKEN=...
@@ -47,15 +39,15 @@ Obligatorias: `DOCS_BUCKET`, `DDB_TABLE`, `DB_HOST`, `DB_NAME`, `DB_USER`,
 `DB_PASSWORD`, `JWT_SECRET`, `AWS_REGION`.
 Opcionales: `DB_PORT` (3306), `DDB_ENDPOINT_URL`, `CORS_ALLOWED_ORIGINS`.
 
-La API falla al arrancar si falta una obligatoria o si `DOCS_BUCKET` está
-vacío. El esquema de MySQL se intenta aplicar al arrancar, pero un MySQL
-apagado no impide arrancar: `/api/health` debe seguir respondiendo 200 y el
-esquema se reintenta en el primer registro/login.
+La API falla al arrancar si falta una obligatoria o si `JWT_SECRET` tiene menos de
+32 caracteres. El esquema de MySQL se intenta aplicar al arrancar, pero un MySQL
+apagado no impide arrancar: `/api/health` sigue respondiendo 200 y el esquema se
+reintenta en el primer registro/login.
 
 ## DynamoDB Local
 
-La API consume la tabla `documents` (no la crea). Crear la tabla con el
-comando de `docs/architecture.md`, sección 13:
+La API consume la tabla `documents` (no la crea). Crear la tabla con el comando de
+`docs/architecture.md`, sección 13:
 
 ```bash
 docker compose up -d
@@ -73,11 +65,17 @@ aws dynamodb create-table --endpoint-url http://localhost:8001 --region us-east-
 
 ## Ejecutar
 
-Desde `app/api`, con el entorno cargado:
+Desarrollo (recarga automática):
 
 ```bash
-gunicorn --workers 2 --bind 0.0.0.0:8000 \
-  --access-logfile - --error-logfile - app:app
+npm run dev
+```
+
+Producción:
+
+```bash
+npm run build
+WEB_CONCURRENCY=2 node dist/server.js
 ```
 
 Comando para el unit `docuprocess-api.service` de A4:
@@ -85,30 +83,29 @@ Comando para el unit `docuprocess-api.service` de A4:
 ```ini
 WorkingDirectory=/opt/docuprocess/api
 EnvironmentFile=/etc/docuprocess.env
-ExecStart=/opt/docuprocess/venv/bin/gunicorn \
-  --workers 2 --bind 0.0.0.0:8000 \
-  --access-logfile - --error-logfile - \
-  --timeout 30 --graceful-timeout 30 app:app
+ExecStart=/usr/bin/node /opt/docuprocess/api/dist/server.js
+Environment=WEB_CONCURRENCY=2
+Restart=always
+User=docuprocess
 ```
 
 Los logs salen por stdout/stderr y systemd los recoge en journald.
+
+## Documentación de la API
+
+- Swagger UI: `http://localhost:8000/api/docs`
+- OpenAPI 3.0: `http://localhost:8000/api/openapi.json`
 
 ## Pruebas
 
 ```bash
 cd app/api
-pytest tests -q
+npm run typecheck
+npm test
 ```
 
-Las pruebas son herméticas: `moto` simula DynamoDB/S3 y SQLite simula MySQL.
-Para ejecutar la misma suite contra el MySQL de docker-compose:
-
-```bash
-docker compose up -d mysql
-DB_HOST=127.0.0.1 DB_PORT=3306 DB_NAME=docuprocess \
-DB_USER=docuadmin DB_PASSWORD="$DB_PASSWORD" \
-TEST_MYSQL=1 pytest tests -q
-```
+Las pruebas son herméticas: usan dobles en memoria para MySQL y AWS, sin necesidad
+de docker-compose ni credenciales.
 
 ## Verificación manual
 
@@ -118,39 +115,26 @@ curl -i 'localhost:8000/api/health?deep=1' # 200 con MySQL y DynamoDB arriba
 
 # health independiente de MySQL
 docker compose stop mysql
-curl -i localhost:8000/api/health          # sigue siendo 200
+curl -i localhost:8000/api/health          # sigue en 200
 docker compose start mysql
-```
 
-Flujo completo:
-
-```bash
-BASE=http://localhost:8000
-curl -s -X POST $BASE/api/auth/register \
+# flujo register -> login -> documento
+curl -s -X POST localhost:8000/api/auth/register \
   -H 'Content-Type: application/json' \
   -d '{"email":"demo@example.com","password":"password123"}'
 
-TOKEN=$(curl -s -X POST $BASE/api/auth/login \
+TOKEN=$(curl -s -X POST localhost:8000/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"email":"demo@example.com","password":"password123"}' \
-  | python3 -c 'import sys,json; print(json.load(sys.stdin)["token"])')
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).token))')
 
-curl -s -X POST $BASE/api/documents \
-  -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' \
+curl -s -X POST localhost:8000/api/documents \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"filename":"demo.pdf","contentType":"application/pdf","size":12345}'
-
-# Copiar uploadUrl y documentId de la respuesta anterior:
-curl -X PUT "$UPLOAD_URL" \
-  -H 'Content-Type: application/pdf' \
-  --data-binary @demo.pdf
-
-curl -s $BASE/api/documents/$DOCUMENT_ID \
-  -H "Authorization: Bearer $TOKEN"
 ```
 
-La URL prefirmada dura 900 s. La API no puede imponer el tamaño en un PUT
-prefirmado; el worker (B6) valida el archivo real. Para ver `PENDING`, no
-levantes el worker durante la prueba. El PUT directo a S3 requiere los
-permisos de B1/B2 sobre `uploads/*` y CORS del bucket si se prueba desde el
-navegador.
+## Empaquetado para A4
+
+El artefacto debe incluir `dist/`, `node_modules` de producción, `schema.sql` y
+`package.json`. El build se hace con dependencias de desarrollo y luego se puede
+podar con `npm prune --omit=dev` antes de comprimir.
