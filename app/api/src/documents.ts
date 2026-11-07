@@ -19,6 +19,7 @@ const S3_UPLOAD_PREFIX = 'uploads';
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Removes paths and control characters and caps the filename at 200 characters. */
 export function sanitizeFilename(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null;
@@ -47,6 +48,7 @@ export function sanitizeFilename(value: unknown): string | null {
   return name.slice(0, 200);
 }
 
+/** Lowercases and validates the declared content type against the allowlist. */
 export function validateContentType(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null;
@@ -55,6 +57,7 @@ export function validateContentType(value: unknown): string | null {
   return ALLOWED_CONTENT_TYPES.has(contentType) ? contentType : null;
 }
 
+/** Validates an integer size between 1 byte and 10 MB. */
 export function validateSize(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isInteger(value)) {
     return null;
@@ -65,6 +68,7 @@ export function validateSize(value: unknown): number | null {
   return value;
 }
 
+/** Registers the authenticated document creation, list and detail routes. */
 export function registerDocumentRoutes(
   app: Express,
   config: Config,

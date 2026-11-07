@@ -1,7 +1,9 @@
 import 'express';
 
+/** Document status values defined by the integration contract. */
 export type DocumentStatus = 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED';
 
+/** DynamoDB document item stored in the documents table. */
 export interface DocumentItem {
   documentId: string;
   userId: string;

@@ -1,3 +1,4 @@
+/** Runtime configuration loaded from environment variables. */
 export interface Config {
   docsBucket: string;
   ddbTable: string;
@@ -23,6 +24,7 @@ const REQUIRED_ENV = [
   'AWS_REGION',
 ] as const;
 
+/** Raised when the environment configuration is missing or invalid. */
 export class ConfigError extends Error {
   constructor(message: string) {
     super(message);
@@ -30,6 +32,11 @@ export class ConfigError extends Error {
   }
 }
 
+/**
+ * Loads and validates the configuration from environment variables.
+ * Fails fast when a required variable is missing or a value is invalid.
+ * Secret values are never included in error messages.
+ */
 export function loadConfig(
   env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
 ): Config {

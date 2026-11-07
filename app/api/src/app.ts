@@ -3,6 +3,7 @@ import express, {
   type Express,
   type RequestHandler,
 } from 'express';
+import swaggerUi from 'swagger-ui-express';
 import { registerAuthRoutes } from './auth.js';
 import type { AwsService } from './aws.js';
 import { createAwsService } from './aws.js';
@@ -11,34 +12,44 @@ import type { Db } from './db.js';
 import { createDb } from './db.js';
 import { registerDocumentRoutes } from './documents.js';
 import { HTTP_ERRORS, errorResponse } from './errors.js';
+import { openApiSpec } from './openapi.js';
 
+/** Dependencies that can be overridden in tests. */
 export interface AppDependencies {
   config: Config;
   db?: Db;
   aws?: AwsService;
 }
 
+/**
+ * Paths handled by the API. Used to distinguish a wrong HTTP method (405)
+ * from an unknown route (404).
+ */
 const KNOWN_ROUTES: ReadonlyArray<{ pattern: RegExp; methods: readonly string[] }> = [
   { pattern: /^\/api\/health\/?$/, methods: ['GET'] },
   { pattern: /^\/api\/auth\/register\/?$/, methods: ['POST'] },
   { pattern: /^\/api\/auth\/login\/?$/, methods: ['POST'] },
   { pattern: /^\/api\/documents\/?$/, methods: ['GET', 'POST'] },
   { pattern: /^\/api\/documents\/[^/]+\/?$/, methods: ['GET'] },
+  { pattern: /^\/api\/docs(?:\/.*)?$/, methods: ['GET'] },
+  { pattern: /^\/api\/openapi\.json\/?$/, methods: ['GET'] },
 ];
 
+/** Logs one line per request to stdout, which systemd captures in journald. */
 function requestLogger(): RequestHandler {
-  return (req, _res, next) => {
+  return (req, res, next) => {
     const started = process.hrtime.bigint();
-    _res.on('finish', () => {
+    res.on('finish', () => {
       const elapsedMs = Number(process.hrtime.bigint() - started) / 1_000_000;
       console.log(
-        `${new Date().toISOString()} INFO docuprocess.api: ${req.method} ${req.path} -> ${_res.statusCode} (${elapsedMs.toFixed(1)} ms)`,
+        `${new Date().toISOString()} INFO docuprocess.api: ${req.method} ${req.path} -> ${res.statusCode} (${elapsedMs.toFixed(1)} ms)`,
       );
     });
     next();
   };
 }
 
+/** Adds CORS headers only for configured origins and answers preflight requests. */
 function corsMiddleware(config: Config): RequestHandler {
   return (req, res, next) => {
     const origin = req.get('origin');
@@ -51,13 +62,17 @@ function corsMiddleware(config: Config): RequestHandler {
     }
 
     if (req.method === 'OPTIONS') {
-      res.status(204).end();
+      res.status(200).end();
       return;
     }
     next();
   };
 }
 
+/**
+ * Returns 405 for a known path with an unsupported method, or 404 otherwise.
+ * Both responses use the API error format.
+ */
 function notFoundOrMethodNotAllowed(): RequestHandler {
   return (req, res) => {
     const known = KNOWN_ROUTES.some((route) => route.pattern.test(req.path));
@@ -79,6 +94,10 @@ function notFoundOrMethodNotAllowed(): RequestHandler {
   };
 }
 
+/**
+ * Maps body-parser and unexpected errors to the API error format.
+ * Handles oversized bodies (413), malformed JSON (400) and unknown failures (500).
+ */
 function errorHandler(): ErrorRequestHandler {
   return (error, _req, res, _next) => {
     if (
@@ -113,6 +132,11 @@ function errorHandler(): ErrorRequestHandler {
   };
 }
 
+/**
+ * Returns the health handler. The shallow check never touches MySQL so the
+ * ALB target group stays healthy even during a database outage. The deep check
+ * verifies MySQL and DynamoDB when the query string contains deep=1|true|yes.
+ */
 function healthHandler(config: Config, db: Db, aws: AwsService): RequestHandler {
   return async (req, res) => {
     const deep = String(req.query.deep ?? '').toLowerCase();
@@ -161,6 +185,10 @@ function healthHandler(config: Config, db: Db, aws: AwsService): RequestHandler 
   };
 }
 
+/**
+ * Builds the Express application with all routes, middleware and error handlers.
+ * Dependencies are injectable so tests can replace MySQL and AWS.
+ */
 export function createApp({
   config,
   db = createDb(config),
@@ -182,9 +210,19 @@ export function createApp({
   registerAuthRoutes(app, config, db);
   registerDocumentRoutes(app, config, aws);
 
+  app.get('/api/openapi.json', (_req, res) => {
+    res.json(openApiSpec);
+  });
+  app.use(
+    '/api/docs',
+    swaggerUi.serve,
+    swaggerUi.setup(openApiSpec, { customSiteTitle: 'DocuProcess Cloud API' }),
+  );
+
   app.use(notFoundOrMethodNotAllowed());
   app.use(errorHandler());
 
+  // Startup must not fail when MySQL is down: the ALB health check still works.
   void db.ensureSchema().catch((error: unknown) => {
     console.warn(
       `${new Date().toISOString()} WARN docuprocess.api: no se pudo aplicar schema.sql al arrancar:`,

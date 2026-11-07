@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { errorResponse } from './errors.js';
 
+/** Reads and validates a JSON object body; sends a 400 response when invalid. */
 export function readJsonBody(
   req: Request,
   res: Response,

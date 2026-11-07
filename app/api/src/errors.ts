@@ -1,5 +1,6 @@
 import type { Response } from 'express';
 
+/** Sends an API error with the standard {error, message} shape. */
 export function errorResponse(
   res: Response,
   code: string,

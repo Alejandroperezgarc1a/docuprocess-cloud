@@ -7,21 +7,30 @@ import mysql, {
 } from 'mysql2/promise';
 import type { Config } from './config.js';
 
+/** MySQL user row returned by the repository. */
 export interface UserRecord {
   id: number;
   email: string;
   password_hash: string;
 }
 
+/** Persistence operations required by the authentication layer. */
 export interface Db {
+  /** Applies schema.sql once per process unless `force` is true. */
   ensureSchema(force?: boolean): Promise<void>;
+  /** Inserts a user and returns the generated id. */
   createUser(email: string, passwordHash: string): Promise<number>;
+  /** Finds a user by normalized email. */
   findUserByEmail(email: string): Promise<UserRecord | undefined>;
+  /** Runs a lightweight query to verify that MySQL is reachable. */
   ping(): Promise<void>;
+  /** Clears the schema flag when MySQL reports a missing table. */
   markSchemaMissing(error: unknown): void;
+  /** Closes the connection pool. */
   close(): Promise<void>;
 }
 
+/** Raised when the email already exists in MySQL (error 1062). */
 export class EmailAlreadyExists extends Error {
   constructor(message = 'email duplicado') {
     super(message);
@@ -31,7 +40,8 @@ export class EmailAlreadyExists extends Error {
 
 const SCHEMA_PATH = fileURLToPath(new URL('../schema.sql', import.meta.url));
 
-function schemaStatements(raw: string): string[] {
+/** Splits schema.sql into individual statements, ignoring comments and blank lines. */
+export function parseSchemaStatements(raw: string): string[] {
   const lines = raw
     .split(/\r?\n/)
     .filter((line) => line.trim() !== '' && !line.trim().startsWith('--'));
@@ -51,11 +61,13 @@ function mysqlErrorCode(error: unknown): string | undefined {
   return typeof code === 'string' ? code : undefined;
 }
 
+/** MySQL implementation backed by a mysql2 connection pool. */
 export class MySqlDb implements Db {
   private readonly pool: Pool;
   private schemaReady = false;
   private schemaTask: Promise<void> | null = null;
 
+  /** Creates the pool with the timeouts and charset required by the contract. */
   constructor(private readonly config: Config) {
     this.pool = mysql.createPool({
       host: config.dbHost,
@@ -71,6 +83,7 @@ export class MySqlDb implements Db {
     });
   }
 
+  /** Applies schema.sql at most once concurrently; retries after a failure. */
   async ensureSchema(force = false): Promise<void> {
     if (this.schemaReady && !force) {
       return;
@@ -85,18 +98,20 @@ export class MySqlDb implements Db {
     return this.schemaTask;
   }
 
+  /** Executes every statement from schema.sql (CREATE TABLE IF NOT EXISTS). */
   private async applySchema(force: boolean): Promise<void> {
     if (this.schemaReady && !force) {
       return;
     }
 
     const raw = await readFile(SCHEMA_PATH, 'utf8');
-    for (const statement of schemaStatements(raw)) {
+    for (const statement of parseSchemaStatements(raw)) {
       await this.pool.query(statement);
     }
     this.schemaReady = true;
   }
 
+  /** Inserts a user, translating duplicate emails to EmailAlreadyExists. */
   async createUser(email: string, passwordHash: string): Promise<number> {
     try {
       const [result] = await this.pool.execute<ResultSetHeader>(
@@ -112,6 +127,7 @@ export class MySqlDb implements Db {
     }
   }
 
+  /** Returns the user row for an email, or undefined when it does not exist. */
   async findUserByEmail(email: string): Promise<UserRecord | undefined> {
     const [rows] = await this.pool.execute<RowDataPacket[]>(
       'SELECT id, email, password_hash FROM users WHERE email = ?',
@@ -128,21 +144,25 @@ export class MySqlDb implements Db {
     };
   }
 
+  /** Executes SELECT 1 to verify connectivity. */
   async ping(): Promise<void> {
     await this.pool.query('SELECT 1 AS ok');
   }
 
+  /** Marks the schema as missing when MySQL returns ER_NO_SUCH_TABLE (1146). */
   markSchemaMissing(error: unknown): void {
     if (mysqlErrorCode(error) === 'ER_NO_SUCH_TABLE') {
       this.schemaReady = false;
     }
   }
 
+  /** Closes all pooled connections. */
   async close(): Promise<void> {
     await this.pool.end();
   }
 }
 
+/** Creates the production MySQL repository. */
 export function createDb(config: Config): Db {
   return new MySqlDb(config);
 }

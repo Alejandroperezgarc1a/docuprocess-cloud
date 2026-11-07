@@ -6,6 +6,7 @@ import { createDb } from './db.js';
 
 const PORT = Number(process.env.PORT ?? 8000);
 
+/** Returns the number of workers to fork (WEB_CONCURRENCY, default 2). */
 function workerCount(): number {
   const raw = process.env.WEB_CONCURRENCY ?? '2';
   const parsed = Number(raw);
@@ -15,6 +16,7 @@ function workerCount(): number {
   return 2;
 }
 
+/** Starts the HTTP server in the current process and wires graceful shutdown. */
 function startWorker(): void {
   const config = loadConfig();
   const db = createDb(config);
@@ -46,6 +48,7 @@ function startWorker(): void {
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
+/** Forks the workers and restarts them if they exit unexpectedly. */
 function startPrimary(workers: number): void {
   loadConfig();
   for (let index = 0; index < workers; index += 1) {
@@ -81,6 +84,7 @@ function startPrimary(workers: number): void {
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
+/** Chooses cluster mode or single-process mode based on WEB_CONCURRENCY. */
 function main(): void {
   const workers = workerCount();
   if (cluster.isPrimary && workers > 1) {

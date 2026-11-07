@@ -11,6 +11,7 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const JWT_TTL_SECONDS = 3600;
 const BCRYPT_ROUNDS = 12;
 
+/** Normalizes and validates an email address; returns null when invalid. */
 export function validateEmail(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null;
@@ -22,6 +23,10 @@ export function validateEmail(value: unknown): string | null {
   return email;
 }
 
+/**
+ * Validates the password rules: at least 8 characters and at most 72 UTF-8 bytes.
+ * Returns an error message, or null when the password is valid.
+ */
 export function validatePassword(value: unknown): string | null {
   if (typeof value !== 'string') {
     return 'La contrasena debe ser texto.';
@@ -35,10 +40,12 @@ export function validatePassword(value: unknown): string | null {
   return null;
 }
 
+/** Hashes a password with bcrypt using cost 12. */
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, BCRYPT_ROUNDS);
 }
 
+/** Compares a plain password with a bcrypt hash; never throws. */
 export async function verifyPassword(
   password: string,
   passwordHash: string,
@@ -50,6 +57,7 @@ export async function verifyPassword(
   }
 }
 
+/** Applies the schema, returning false when MySQL is unavailable. */
 async function ensureSchemaOrError(db: Db): Promise<boolean> {
   try {
     await db.ensureSchema();
@@ -63,6 +71,10 @@ async function ensureSchemaOrError(db: Db): Promise<boolean> {
   }
 }
 
+/**
+ * Express middleware that validates the Bearer JWT, requires the sub and iat
+ * claims, and exposes userId/userEmail to downstream handlers.
+ */
 export function requireAuth(config: Config): RequestHandler {
   return (req, res, next) => {
     const header = req.get('authorization') ?? '';
@@ -106,6 +118,7 @@ export function requireAuth(config: Config): RequestHandler {
   };
 }
 
+/** Registers POST /api/auth/register and POST /api/auth/login. */
 export function registerAuthRoutes(app: Express, config: Config, db: Db): void {
   app.post('/api/auth/register', async (req, res) => {
     const body = readJsonBody(req, res);
