@@ -13,18 +13,14 @@ override.tf.json
 *.tfplan
 # .terraform.lock.hcl SÍ se versiona
 
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-.env
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Artefactos generados
+# Node
+node_modules/
 dist/
+coverage/
+*.log
+
+# Secretos y artefactos generados
+.env
 frontend/config.js
 
 # Editores

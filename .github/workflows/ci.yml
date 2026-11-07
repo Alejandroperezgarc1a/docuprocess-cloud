@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -24,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       infra: ${{ steps.d.outputs.infra }}
-      python: ${{ steps.d.outputs.python }}
+      node: ${{ steps.d.outputs.node }}
       scripts: ${{ steps.d.outputs.scripts }}
       package: ${{ steps.d.outputs.package }}
     steps:
@@ -34,10 +35,21 @@ jobs:
           has() { compgen -G "$1" >/dev/null && echo true || echo false; }
           {
             echo "infra=$(has 'infra/*.tf')"
-            echo "python=$(has 'app/*/requirements.txt')"
+            echo "node=$(has 'app/*/package.json')"
             echo "scripts=$(has 'scripts/*.sh')"
             echo "package=$(has 'scripts/package-app.sh')"
           } | tee -a "$GITHUB_OUTPUT"
+
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   terraform:
     name: Terraform (fmt + validate)
@@ -59,12 +71,12 @@ jobs:
       - name: Validate
         run: terraform validate
 
-  python:
-    name: Pruebas Python 3.9 (${{ matrix.component }})
+  node:
+    name: Pruebas Node 24 (${{ matrix.component }})
     needs: detect
-    if: needs.detect.outputs.python == 'true'
+    if: needs.detect.outputs.node == 'true'
     runs-on: ubuntu-latest
-    # Mismo sistema y misma versión de Python que las EC2 (Amazon Linux 2023, Python 3.9)
+    # Mismo sistema y misma versión de Node que las EC2 (Amazon Linux 2023, nodejs24)
     container: amazonlinux:2023
     strategy:
       fail-fast: false
@@ -72,23 +84,29 @@ jobs:
         component: [api, worker]
     steps:
       - name: Herramientas base
-        run: dnf install -y -q python3-pip tar gzip git
+        run: dnf install -y -q nodejs24 nodejs24-npm tar gzip git
       - uses: actions/checkout@v4
       - name: Existe el componente
         id: exists
-        run: test -f app/${{ matrix.component }}/requirements.txt && echo "ok=true" >> "$GITHUB_OUTPUT" || echo "ok=false" >> "$GITHUB_OUTPUT"
+        run: test -f app/${{ matrix.component }}/package.json && echo "ok=true" >> "$GITHUB_OUTPUT" || echo "ok=false" >> "$GITHUB_OUTPUT"
       - name: Dependencias
         if: steps.exists.outputs.ok == 'true'
         working-directory: app/${{ matrix.component }}
         run: |
-          python3 --version
-          python3 -m pip install -q -r requirements.txt
-          if [ -f requirements-dev.txt ]; then python3 -m pip install -q -r requirements-dev.txt; else python3 -m pip install -q pytest; fi
+          node --version
+          npm --version
+          npm ci
+      - name: Tipos y build
+        if: steps.exists.outputs.ok == 'true'
+        working-directory: app/${{ matrix.component }}
+        run: |
+          npm run typecheck
+          npm run build
       - name: Pruebas
         if: steps.exists.outputs.ok == 'true'
         working-directory: app/${{ matrix.component }}
         run: |
-          if [ -d tests ]; then python3 -m pytest -q tests; else echo "Sin carpeta tests/ todavía"; fi
+          if [ -d tests ]; then npm test; else echo "Sin carpeta tests/ todavía"; fi
 
   shellcheck:
     name: ShellCheck
@@ -102,14 +120,14 @@ jobs:
 
   package:
     name: Empaquetado de la app
-    needs: [detect, python]
+    needs: [detect, node]
     if: needs.detect.outputs.package == 'true' && !failure() && !cancelled()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: "3.12"
+          node-version: "24"
       - run: ./scripts/package-app.sh
       - uses: actions/upload-artifact@v4
         with:
