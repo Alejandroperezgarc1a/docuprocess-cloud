@@ -1,0 +1,19 @@
+title = "DocuProcess Cloud"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Valores ficticios de pruebas y ejemplos"
+paths = [
+  '''app/api/tests/.*''',
+  '''\.env\.example$''',
+  '''infra/terraform\.tfvars\.example$''',
+  '''docs/.*''',
+]
+regexes = [
+  '''test-password''',
+  '''test-secret-[A-Za-z0-9]+''',
+  '''CAMBIAR-[A-Za-z0-9-]+''',
+  '''equipo@example\.com''',
+]
