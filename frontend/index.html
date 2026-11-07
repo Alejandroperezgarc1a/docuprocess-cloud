@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0f766e">
+  <title>DocuProcess Cloud</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Crect%20width='24'%20height='24'%20rx='6'%20fill='%230f766e'/%3E%3Cpath%20d='M8%205h6l4%204v10H8z'%20fill='none'%20stroke='white'%20stroke-width='1.6'/%3E%3Cpath%20d='M14%205v4h4'%20fill='none'%20stroke='white'%20stroke-width='1.6'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
+          <path d="M14 3v5h5M9 13h6M9 17h4"/>
+        </svg>
+      </span>
+      <span class="brand-name">DocuProcess <strong>Cloud</strong></span>
+    </div>
+    <div id="session-bar" class="session-bar" hidden>
+      <span id="session-email" class="session-email"></span>
+      <button id="logout-button" class="btn btn-quiet btn-small" type="button">Cerrar sesión</button>
+    </div>
+  </header>
+
+  <main class="page">
+    <section id="auth-view" class="auth" aria-labelledby="auth-title">
+      <div class="auth-hero">
+        <div>
+          <p class="eyebrow eyebrow--light">Procesamiento asíncrono</p>
+          <h1 id="auth-title">Tus documentos, <span>analizados sin esperas.</span></h1>
+          <p class="hero-lead">Sube un PDF o una imagen y consulta páginas, dimensiones y SHA-256 mientras el worker hace el trabajo.</p>
+          <ul class="feature-list">
+            <li>Subida directa y segura a S3</li>
+            <li>Estado del procesamiento en tiempo real</li>
+            <li>Metadatos verificables de cada archivo</li>
+          </ul>
+        </div>
+        <p class="hero-foot">DocuProcess Cloud · Infraestructura III</p>
+      </div>
+
+      <div class="auth-card">
+        <div class="tabs" role="tablist" aria-label="Acceso a la cuenta">
+          <button id="tab-login" class="tab is-active" type="button" role="tab" aria-selected="true" aria-controls="login-panel" tabindex="0">Iniciar sesión</button>
+          <button id="tab-register" class="tab" type="button" role="tab" aria-selected="false" aria-controls="register-panel" tabindex="-1">Crear cuenta</button>
+        </div>
+
+        <div id="login-panel" role="tabpanel" aria-labelledby="tab-login" tabindex="0">
+          <h2>Bienvenido de nuevo</h2>
+          <p class="section-lead">Accede para ver tus documentos y su estado.</p>
+          <form id="login-form">
+            <div class="field">
+              <label for="login-email">Correo electrónico</label>
+              <input id="login-email" name="email" type="email" autocomplete="email" placeholder="tu@correo.com" required>
+            </div>
+            <div class="field">
+              <label for="login-password">Contraseña</label>
+              <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Tu contraseña" required>
+            </div>
+            <p id="login-message" class="message" role="alert" hidden></p>
+            <button id="login-submit" class="btn btn-primary btn-block" type="submit">Entrar</button>
+          </form>
+        </div>
+
+        <div id="register-panel" role="tabpanel" aria-labelledby="tab-register" tabindex="0" hidden>
+          <h2>Crea tu cuenta</h2>
+          <p class="section-lead">Solo necesitas un correo y una contraseña.</p>
+          <form id="register-form">
+            <div class="field">
+              <label for="register-email">Correo electrónico</label>
+              <input id="register-email" name="email" type="email" autocomplete="email" placeholder="tu@correo.com" required>
+            </div>
+            <div class="field">
+              <label for="register-password">Contraseña</label>
+              <input id="register-password" name="password" type="password" autocomplete="new-password" placeholder="Mínimo 8 caracteres" minlength="8" required>
+              <p class="hint">Usa al menos 8 caracteres.</p>
+            </div>
+            <p id="register-message" class="message" role="alert" hidden></p>
+            <button id="register-submit" class="btn btn-primary btn-block" type="submit">Crear cuenta</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section id="app-view" class="app" aria-labelledby="app-title" hidden>
+      <div class="app-heading">
+        <div>
+          <p class="eyebrow">Panel</p>
+          <h1 id="app-title" tabindex="-1">Mis documentos</h1>
+          <p class="section-lead">Sube archivos y sigue su procesamiento sin recargar la página.</p>
+        </div>
+        <button id="refresh-button" class="btn btn-secondary" type="button">Refrescar</button>
+      </div>
+
+      <div class="workspace">
+        <section class="card upload-card" aria-labelledby="upload-title">
+          <div class="card-head">
+            <div>
+              <h2 id="upload-title">Subir documento</h2>
+              <p class="card-sub">El archivo va directo a S3 con una URL prefirmada.</p>
+            </div>
+          </div>
+          <form id="upload-form">
+            <label id="dropzone" class="dropzone" for="file-input">
+              <span class="dropzone-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 16V4M7 9l5-5 5 5M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+                </svg>
+              </span>
+              <span class="dropzone-title">Arrastra tu archivo aquí</span>
+              <span class="dropzone-sub">o haz clic para elegirlo</span>
+              <input id="file-input" class="sr-only" type="file" accept=".pdf,.png,.jpg,.jpeg,.txt,application/pdf,image/png,image/jpeg,text/plain">
+            </label>
+            <p id="file-meta" class="file-meta" hidden></p>
+            <p class="hint">PDF, PNG, JPG o TXT · máximo 10 MB.</p>
+            <p id="upload-message" class="message" role="status" hidden></p>
+            <button id="upload-submit" class="btn btn-primary btn-block" type="submit" disabled>Subir documento</button>
+          </form>
+        </section>
+
+        <section class="card documents-card" aria-labelledby="documents-title">
+          <div class="card-head card-head--split">
+            <div>
+              <h2 id="documents-title">Historial</h2>
+              <p id="list-status" class="card-sub" aria-live="polite"></p>
+            </div>
+          </div>
+          <p id="list-message" class="message" role="alert" hidden></p>
+          <ul id="document-list" class="document-list"></ul>
+          <div id="empty-state" class="empty-state" hidden>
+            <span aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
+                <path d="M14 3v5h5M9 13h6M9 17h4"/>
+              </svg>
+            </span>
+            <p><strong>Aún no hay documentos.</strong><br>Sube el primero para empezar.</p>
+          </div>
+        </section>
+      </div>
+
+      <section id="detail-card" class="card detail-card" aria-labelledby="detail-title" hidden>
+        <div class="card-head card-head--split">
+          <h2 id="detail-title" tabindex="-1">Detalle del documento</h2>
+          <button id="detail-close" class="icon-button" type="button" aria-label="Cerrar detalle">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M6 6l12 12M18 6L6 18"/>
+            </svg>
+          </button>
+        </div>
+        <div id="detail-content" class="detail-content"></div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>DocuProcess Cloud · Proyecto final de Infraestructura III</p>
+  </footer>
+
+  <script>window.DOCUPROCESS_CONFIG = window.DOCUPROCESS_CONFIG || { apiBaseUrl: "" };</script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
