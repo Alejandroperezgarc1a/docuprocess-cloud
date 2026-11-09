@@ -74,6 +74,17 @@ module "network" {
 
 # --- rds (A5)
 
+module "rds" {
+  source = "./modules/rds"
+
+  name_prefix           = local.name_prefix
+  private_subnet_ids    = module.network.private_subnet_ids
+  rds_security_group_id = module.network.rds_security_group_id
+  db_name               = var.db_name
+  db_username           = var.db_username
+  db_password           = var.db_password
+}
+
 # --- compute (A3) + userData y artefacto (A4)
 
 # --- cdn (B5)
