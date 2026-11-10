@@ -178,7 +178,7 @@ jobs:
           test "$first" = "$second" || { echo "::error::El zip no es determinista"; exit 1; }
           list="$(unzip -Z1 dist/docuprocess-app.zip)"
           grep -q '^api/dist/server.js$' <<<"$list" || { echo "::error::Falta api/dist/server.js"; exit 1; }
-          if grep -E '\.map$|/src/|^[^/]+/tests/|node_modules/(typescript|tsx|supertest|@types)/' <<<"$list"; then
+          if grep -E '\.map$|^[^/]+/(src|tests)/|node_modules/(typescript|tsx|supertest|@types)/' <<<"$list"; then
             echo "::error::El zip trae fuentes, mapas o dependencias de desarrollo"; exit 1
           fi
       - uses: actions/upload-artifact@v4

@@ -63,6 +63,9 @@ for comp in "${COMPONENTS[@]}"; do
   # Fuera lo que no se ejecuta en producción.
   find "$dst" -type f -name '*.map' -delete
   find "$dst/node_modules" -type d -name .bin -prune -exec rm -rf {} +
+  # Solo definiciones de tipos (.d.ts): mysql2 declara @types/node como dependencia de producción,
+  # pero Node nunca las carga.
+  rm -rf "$dst/node_modules/@types"
   rm -f "$dst/node_modules/.package-lock.json"
 done
 
