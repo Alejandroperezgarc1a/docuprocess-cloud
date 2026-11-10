@@ -87,6 +87,41 @@ module "rds" {
 
 # --- compute (A3) + userData y artefacto (A4)
 
+locals {
+  # El userData se renderiza aquí (la raíz conoce los outputs de todos los módulos) y compute
+  # lo recibe como texto. Los valores de módulos que aún no existen (storage, dynamodb, sns)
+  # van vacíos hasta que B2, B3 y B6 lleguen a main; A4 los conecta.
+  user_data = templatefile("${path.module}/../scripts/user-data.sh.tftpl", {
+    aws_region       = var.aws_region
+    db_host          = module.rds.db_address
+    db_port          = module.rds.db_port
+    db_name          = var.db_name
+    db_user          = var.db_username
+    ddb_table        = var.dynamodb_table_name
+    docs_bucket      = ""
+    sns_topic_arn    = ""
+    artifacts_bucket = ""
+  })
+}
+
+module "compute" {
+  source = "./modules/compute"
+
+  name_prefix           = local.name_prefix
+  vpc_id                = module.network.vpc_id
+  public_subnet_ids     = module.network.public_subnet_ids
+  private_subnet_ids    = module.network.private_subnet_ids
+  alb_security_group_id = module.network.alb_security_group_id
+  app_security_group_id = module.network.app_security_group_id
+  instance_type         = var.instance_type
+  instance_profile_name = local.instance_profile_name
+  root_volume_size      = var.root_volume_size
+  asg_min_size          = var.asg_min_size
+  asg_max_size          = var.asg_max_size
+  asg_desired_capacity  = var.asg_desired_capacity
+  user_data             = local.user_data
+}
+
 # --- cdn (B5)
 
 # --- monitoring (B9)
