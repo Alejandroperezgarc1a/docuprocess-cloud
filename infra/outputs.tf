@@ -27,3 +27,13 @@ output "rds_endpoint" {
   description = "Nombre DNS de la base MySQL (A5). Solo es alcanzable desde la app."
   value       = module.rds.db_address
 }
+
+output "alb_dns_name" {
+  description = "DNS público del ALB (A3). Con CloudFront (B7) el acceso normal es por app_url."
+  value       = module.compute.alb_dns_name
+}
+
+output "asg_name" {
+  description = "Auto Scaling Group de la app (A3)."
+  value       = module.compute.asg_name
+}
