@@ -89,16 +89,24 @@ module "rds" {
 
 locals {
   # Salidas de módulos que aún no están en main. Cuando lleguen, se cambia "" por el output:
-  #   B2: module.storage.docs_bucket_name y module.storage.artifacts_bucket_name
+  #   B2: module.storage.docs_bucket_name y module.storage.artifacts_bucket_name (los DOS en el
+  #       mismo cambio: la API no arranca sin DOCS_BUCKET) y depends_on = [module.storage] en
+  #       module.compute, para que la bucket policy exista antes de que las instancias bajen el zip.
+  #   B3: module.dynamodb.table_name en ddb_table (hoy var.dynamodb_table_name).
   #   B6: module.sns.topic_arn
-  # Sin bucket de artefactos no se sube el zip y el userData levanta el servidor provisional.
+  # Mientras falte alguno de los dos buckets, el userData levanta el servidor provisional.
   docs_bucket_name      = ""
   artifacts_bucket_name = ""
   sns_topic_arn         = ""
+
+  # md5 del zip, o "" si no existe (la precondición de app_artifact explica qué hacer).
+  app_artifact_md5 = fileexists(var.app_artifact_path) ? filemd5(var.app_artifact_path) : ""
 }
 
 # Secretos de la app en Parameter Store (SecureString, cifrados con la clave administrada aws/ssm).
-# El userData los lee al arrancar: no viajan en el userData ni en el launch template.
+# El userData los lee al arrancar: no viajan en el userData ni en el launch template. Si el
+# parámetro ya existe fuera del estado (otro despliegue en la misma cuenta), el apply falla con
+# ParameterAlreadyExists: borrarlo o importarlo (`overwrite` está obsoleto en el provider).
 resource "aws_ssm_parameter" "db_password" {
   name        = "/${local.name_prefix}/db_password"
   description = "Contraseña de MySQL (RDS) de la API."
@@ -114,7 +122,8 @@ resource "aws_ssm_parameter" "jwt_secret" {
 }
 
 # Artefacto de la app (lo genera scripts/package-app.sh). La clave incluye el hash del zip:
-# código nuevo -> clave nueva -> userData nuevo -> versión nueva del launch template -> ASG azul/verde.
+# código nuevo -> clave nueva -> userData nuevo -> versión nueva del launch template -> ASG nuevo
+# (reemplazo sin caída, ver modules/compute).
 #
 # TEMPORAL hasta B2: el count y el relleno "pendiente-b2" existen solo porque aún no hay bucket.
 # Al conectar module.storage se quitan los dos (el nombre de B2 lleva un random_id que no se
@@ -123,30 +132,44 @@ resource "aws_s3_object" "app_artifact" {
   count = local.artifacts_bucket_name != "" ? 1 : 0
 
   bucket = local.artifacts_bucket_name != "" ? local.artifacts_bucket_name : "pendiente-b2"
-  key    = "releases/app-${filemd5(var.app_artifact_path)}.zip"
+  key    = "releases/app-${local.app_artifact_md5}.zip"
   source = var.app_artifact_path
   # source_hash y no etag: el zip pesa más de 5 MB y se sube en partes (multipart), así que el ETag
   # de S3 no coincide con el md5 del archivo y el plan mostraría un cambio en cada ejecución.
-  source_hash = filemd5(var.app_artifact_path)
+  source_hash = local.app_artifact_md5
+
+  lifecycle {
+    precondition {
+      condition     = local.app_artifact_md5 != ""
+      error_message = "No existe ${var.app_artifact_path}: ejecutar ./scripts/package-app.sh antes de terraform apply."
+    }
+    precondition {
+      condition     = local.docs_bucket_name != ""
+      error_message = "Hay bucket de artefactos pero no de documentos: la API no arranca sin DOCS_BUCKET. Conectar los dos outputs de B2 juntos."
+    }
+  }
 }
 
 locals {
   # El userData se renderiza aquí (la raíz conoce los outputs de todos los módulos) y compute
   # lo recibe como texto. Los nombres de los parámetros se pasan por referencia para que
-  # Terraform los cree antes que el launch template.
+  # Terraform los cree antes que el launch template. Sus versiones (no los valores) entran al
+  # userData: rotar un secreto cambia la versión y reemplaza las instancias.
   user_data = templatefile("${path.module}/../scripts/user-data.sh.tftpl", {
-    aws_region        = var.aws_region
-    db_password_param = aws_ssm_parameter.db_password.name
-    jwt_secret_param  = aws_ssm_parameter.jwt_secret.name
-    db_host           = module.rds.db_address
-    db_port           = module.rds.db_port
-    db_name           = var.db_name
-    db_user           = var.db_username
-    ddb_table         = var.dynamodb_table_name
-    docs_bucket       = local.docs_bucket_name
-    sns_topic_arn     = local.sns_topic_arn
-    artifacts_bucket  = local.artifacts_bucket_name
-    artifact_key      = try(aws_s3_object.app_artifact[0].key, "")
+    aws_region          = var.aws_region
+    db_password_param   = aws_ssm_parameter.db_password.name
+    jwt_secret_param    = aws_ssm_parameter.jwt_secret.name
+    db_password_version = aws_ssm_parameter.db_password.version
+    jwt_secret_version  = aws_ssm_parameter.jwt_secret.version
+    db_host             = module.rds.db_address
+    db_port             = module.rds.db_port
+    db_name             = var.db_name
+    db_user             = var.db_username
+    ddb_table           = var.dynamodb_table_name
+    docs_bucket         = local.docs_bucket_name
+    sns_topic_arn       = local.sns_topic_arn
+    artifacts_bucket    = local.artifacts_bucket_name
+    artifact_key        = try(aws_s3_object.app_artifact[0].key, "")
   })
 }
 

@@ -6,7 +6,7 @@
 data "aws_default_tags" "this" {}
 
 # Amazon Linux 2023 más reciente. Cambia con cada AMI nueva: eso crea otra versión del
-# launch template y, con ella, un despliegue azul/verde del ASG (instancias siempre parcheadas).
+# launch template y, con ella, un reemplazo sin caída del ASG (instancias siempre parcheadas).
 data "aws_ami" "al2023" {
   owners      = ["amazon"]
   most_recent = true
@@ -133,10 +133,21 @@ resource "aws_lb_listener" "http" {
 # Auto Scaling Group
 # -----------------------------------------------------------------------------
 
-# Despliegue azul/verde del ASG: el Sandbox niega autoscaling:StartInstanceRefresh (SCP de la
+# Reemplazo sin caída del ASG (surge): el Sandbox niega autoscaling:StartInstanceRefresh (SCP de la
 # organización), así que no se usa instance_refresh. El nombre lleva la versión del launch template:
-# un cambio de userData (artefacto nuevo) crea una versión nueva -> nombre nuevo -> Terraform crea el
-# ASG nuevo, espera a que sus instancias estén sanas en el ALB y recién entonces borra el viejo.
+# un cambio de userData (artefacto nuevo, secreto rotado, AMI nueva) crea una versión nueva -> nombre
+# nuevo -> Terraform crea el ASG nuevo, espera a que sus instancias estén sanas en el ALB y recién
+# entonces borra el viejo. No es azul/verde estricto: los dos ASG comparten el target group, así que
+# durante unos minutos el tráfico se reparte entre versiones y no hay un "switch" de vuelta inmediato.
+#
+# Efectos a tener en cuenta:
+# - El ASG nuevo nace con var.asg_desired_capacity (2), no con la capacidad a la que A7 haya escalado
+#   el viejo: ignore_changes solo protege a un ASG existente. Tras un despliegue en carga, el escalado
+#   vuelve a subir según la CPU.
+# - data.aws_ami.al2023 usa most_recent: una AMI nueva de AL2023 también dispara el reemplazo
+#   (parches automáticos). Para una demo estable, desplegar el mismo día o fijar la AMI.
+# - Si el ASG nuevo no llega a healthy en wait_for_capacity_timeout (p. ej. /api/ready falla en el
+#   userData), el apply falla y el ASG viejo sigue atendiendo.
 resource "aws_autoscaling_group" "app" {
   name                = "${var.name_prefix}-app-v${aws_launch_template.app.latest_version}"
   vpc_zone_identifier = var.private_subnet_ids
@@ -151,7 +162,7 @@ resource "aws_autoscaling_group" "app" {
   health_check_grace_period = 300
 
   # Versión fija (latest_version, un número) y no "$Latest": cada ASG queda atado a la versión
-  # con la que nació, y el cambio de versión es lo que dispara el reemplazo azul/verde.
+  # con la que nació, y el cambio de versión es lo que dispara el reemplazo.
   launch_template {
     id      = aws_launch_template.app.id
     version = aws_launch_template.app.latest_version
@@ -159,7 +170,8 @@ resource "aws_autoscaling_group" "app" {
 
   # Terraform no da por creado el ASG hasta que asg_min_size instancias estén healthy en el target
   # group; así el ASG viejo solo se borra cuando el nuevo ya atiende tráfico.
-  wait_for_elb_capacity = var.asg_min_size
+  wait_for_elb_capacity     = var.asg_min_size
+  wait_for_capacity_timeout = "10m"
 
   lifecycle {
     create_before_destroy = true
