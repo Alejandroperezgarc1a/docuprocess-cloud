@@ -27,3 +27,18 @@ output "rds_endpoint" {
   description = "Nombre DNS de la base MySQL (A5). Solo es alcanzable desde la app."
   value       = module.rds.db_address
 }
+
+output "docs_bucket_name" {
+  description = "Bucket de documentos de usuario (B2)."
+  value       = module.storage.docs_bucket_name
+}
+
+output "frontend_bucket_name" {
+  description = "Bucket del frontend estático (B2)."
+  value       = module.storage.frontend_bucket_name
+}
+
+output "artifacts_bucket_name" {
+  description = "Bucket de artefactos de la aplicación (B2)."
+  value       = module.storage.artifacts_bucket_name
+}

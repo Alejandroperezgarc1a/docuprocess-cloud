@@ -224,6 +224,20 @@ variable "jwt_secret" {
 # Datos y notificaciones (B2, B3, B4, B9)
 # -----------------------------------------------------------------------------
 
+variable "cors_allowed_origins" {
+  description = "Orígenes permitidos para el PUT prefirmado al bucket de documentos."
+  type        = list(string)
+  default     = ["http://localhost:5500", "http://127.0.0.1:5500"]
+
+  validation {
+    condition = length(var.cors_allowed_origins) > 0 && alltrue([
+      for origin in var.cors_allowed_origins :
+      origin == "*" || can(regex("^https?://[^/]+$", origin))
+    ])
+    error_message = "cors_allowed_origins debe contener orígenes http(s) válidos o '*'."
+  }
+}
+
 variable "dynamodb_table_name" {
   description = "Nombre de la tabla de documentos."
   type        = string
