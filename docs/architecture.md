@@ -158,6 +158,7 @@ La app **no** debe usar operaciones de listado de cuenta (`ListBuckets`, `ListTa
 | El instance profile tiene un nombre generado (`…-SsmRoleInstanceProfile-…`) distinto en cada cuenta | Se descubre con `data "aws_iam_instance_profiles"` a partir del nombre del rol; nunca `data "aws_iam_role"` |
 | `RunInstances` con volúmenes **gp3** → *explicit deny* (la AMI AL2023 trae gp3) | Disco raíz forzado a **gp2** |
 | `s3:GetBucketObjectLockConfiguration` → *explicit deny*; `aws_s3_bucket` falla (providers 4.x, 5.x y 6.x) | Buckets con `awscc_s3_bucket` + sub-recursos de `aws` + vaciado al destruir (`scripts/empty-bucket.sh`) |
+| `autoscaling:StartInstanceRefresh` → *explicit deny* de una SCP (A4, 2026-11-09) | Sin `instance_refresh`: el ASG lleva la versión del launch template en el nombre y se reemplaza azul/verde (`create_before_destroy` + `wait_for_elb_capacity`) |
 | Sin NAT no hay STS ni internet; SSM, S3, DynamoDB, SNS y `dnf` funcionan por endpoints | `enable_nat_gateway = false`; dependencias de Node.js (`node_modules`) empaquetadas en el artefacto |
 | La topic policy de SNS no acepta `sns:*`; `s3:HeadObject` no es una acción válida | Listar acciones concretas en las políticas |
 
