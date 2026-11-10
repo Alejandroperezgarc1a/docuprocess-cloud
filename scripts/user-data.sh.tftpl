@@ -1,0 +1,52 @@
+#!/bin/bash
+# userData MÍNIMO (A3). Plantilla de Terraform: lo que va entre $${...} lo rellena templatefile()
+# en la raíz; las variables de bash van sin llaves para que Terraform no las interprete.
+#
+# Sirve para validar el ALB, el target group y el ASG antes de que existan la API y el
+# empaquetado: escribe /etc/docuprocess.env y levanta un servidor que responde 200 en /api/health
+# por el puerto 8000. A4 reemplaza este archivo por la instalación real (Node.js 24 + artefacto).
+set -euo pipefail
+exec > >(tee -a /var/log/docuprocess-userdata.log) 2>&1
+echo "$(date -Is) userData mínimo: inicio"
+
+# --- Configuración de la app (contrato de docs/architecture.md, sección 3).
+# Los secretos (DB_PASSWORD, JWT_SECRET) no van aquí: A4 los lee de Parameter Store al arrancar.
+umask 077
+cat > /etc/docuprocess.env <<ENV
+AWS_REGION=${aws_region}
+DB_HOST=${db_host}
+DB_PORT=${db_port}
+DB_NAME=${db_name}
+DB_USER=${db_user}
+DDB_TABLE=${ddb_table}
+DOCS_BUCKET=${docs_bucket}
+SNS_TOPIC_ARN=${sns_topic_arn}
+ARTIFACTS_BUCKET=${artifacts_bucket}
+ENV
+chown root:root /etc/docuprocess.env
+chmod 600 /etc/docuprocess.env
+umask 022
+
+# --- Servidor provisional: un archivo estático en /api/health servido por python3 (viene en la AMI,
+# no necesita internet). Responde 200 como lo hará el health check superficial de la API real.
+mkdir -p /opt/docuprocess/placeholder/api
+echo '{"status":"ok","placeholder":true}' > /opt/docuprocess/placeholder/api/health
+
+cat > /etc/systemd/system/docuprocess-placeholder.service <<'UNIT'
+[Unit]
+Description=DocuProcess - servidor provisional de health check (A3)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=nobody
+ExecStart=/usr/bin/python3 -m http.server 8000 --bind 0.0.0.0 --directory /opt/docuprocess/placeholder
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now docuprocess-placeholder.service
+echo "$(date -Is) userData mínimo: listo (puerto 8000)"
