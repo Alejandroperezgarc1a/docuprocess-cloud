@@ -137,8 +137,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Los .tftpl no se analizan: son plantillas de Terraform con interpolaciones ${...}
       - run: shellcheck --version && shellcheck scripts/*.sh
+      # Las plantillas .tftpl se renderizan con templatefile() (las dos ramas: con artefacto y
+      # provisional) y se analiza el bash resultante.
+      - uses: hashicorp/setup-terraform@v3
+        if: hashFiles('scripts/user-data.sh.tftpl') != ''
+        with:
+          terraform_version: 1.17.1
+          terraform_wrapper: false
+      - name: ShellCheck del userData renderizado
+        if: hashFiles('scripts/user-data.sh.tftpl') != ''
+        run: |
+          tpl="$PWD/scripts/user-data.sh.tftpl"
+          work="$(mktemp -d)"
+          for key in releases/app-ci.zip ""; do
+            vars="aws_region=\"us-east-1\", db_password_param=\"/p/db\", jwt_secret_param=\"/p/jwt\", db_password_version=1, jwt_secret_version=1, db_host=\"db.example\", db_port=3306, db_name=\"docuprocess\", db_user=\"docuadmin\", ddb_table=\"documents\", docs_bucket=\"docs\", sns_topic_arn=\"\", artifacts_bucket=\"artifacts\", artifact_key=\"$key\""
+            echo "templatefile(\"$tpl\", {$vars})" \
+              | (cd "$work" && terraform console) | sed '1{/^<<EOT$/d};${/^EOT$/d}' > "$work/ud.sh"
+            echo "--- variante: ${key:-provisional} ($(wc -l < "$work/ud.sh") líneas)"
+            shellcheck "$work/ud.sh"
+          done
 
   package:
     name: Empaquetado de la app
@@ -151,6 +169,18 @@ jobs:
         with:
           node-version: "24"
       - run: ./scripts/package-app.sh
+      - name: Determinismo y contenido del zip
+        run: |
+          first="$(md5sum dist/docuprocess-app.zip | cut -d' ' -f1)"
+          ./scripts/package-app.sh
+          second="$(md5sum dist/docuprocess-app.zip | cut -d' ' -f1)"
+          echo "md5: $first / $second"
+          test "$first" = "$second" || { echo "::error::El zip no es determinista"; exit 1; }
+          list="$(unzip -Z1 dist/docuprocess-app.zip)"
+          grep -q '^api/dist/server.js$' <<<"$list" || { echo "::error::Falta api/dist/server.js"; exit 1; }
+          if grep -E '\.map$|/src/|^[^/]+/tests/|node_modules/(typescript|tsx|supertest|@types)/' <<<"$list"; then
+            echo "::error::El zip trae fuentes, mapas o dependencias de desarrollo"; exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: docuprocess-app
