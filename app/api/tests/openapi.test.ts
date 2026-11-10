@@ -12,6 +12,7 @@ describe('openapi', () => {
     assert.equal(response.status, 200);
     assert.equal(response.body.openapi, '3.0.3');
     assert.ok(response.body.paths['/api/health']);
+    assert.ok(response.body.paths['/api/ready']);
     assert.ok(response.body.paths['/api/auth/register']);
     assert.ok(response.body.paths['/api/documents']);
     assert.ok(response.body.components.securitySchemes.bearerAuth);
