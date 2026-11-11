@@ -204,8 +204,8 @@ variable "db_password" {
   sensitive   = true
 
   validation {
-    condition     = length(var.db_password) >= 12 && !can(regex("[/@\" ]", var.db_password))
-    error_message = "db_password: mínimo 12 caracteres y sin / @ \" ni espacios (restricción de RDS)."
+    condition     = length(var.db_password) >= 12 && can(regex("^[!-~]+$", var.db_password)) && !can(regex("[/@\"]", var.db_password))
+    error_message = "db_password: mínimo 12 caracteres ASCII imprimibles, sin espacios, saltos de línea ni / @ \" (restricción de RDS)."
   }
 }
 
@@ -215,8 +215,8 @@ variable "jwt_secret" {
   sensitive   = true
 
   validation {
-    condition     = length(var.jwt_secret) >= 32
-    error_message = "jwt_secret: mínimo 32 caracteres (generar con: openssl rand -hex 32)."
+    condition     = length(var.jwt_secret) >= 32 && can(regex("^[!-~]+$", var.jwt_secret))
+    error_message = "jwt_secret: mínimo 32 caracteres ASCII imprimibles, sin espacios ni saltos de línea (generar con: openssl rand -hex 32)."
   }
 }
 

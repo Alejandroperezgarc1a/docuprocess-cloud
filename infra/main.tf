@@ -99,6 +99,100 @@ module "rds" {
 
 # --- compute (A3) + userData y artefacto (A4)
 
+locals {
+  # B2 ya está en main: la API recibe los dos buckets juntos (sin DOCS_BUCKET no arranca).
+  docs_bucket_name      = module.storage.docs_bucket_name
+  artifacts_bucket_name = module.storage.artifacts_bucket_name
+
+  # Pendiente de integrar: B3 (module.dynamodb.table_name) y B6 (module.sns.topic_arn).
+  sns_topic_arn = ""
+
+  # md5 del zip, o "" si no existe (la precondición de app_artifact explica qué hacer).
+  app_artifact_md5 = fileexists(var.app_artifact_path) ? filemd5(var.app_artifact_path) : ""
+}
+
+# Secretos de la app en Parameter Store (SecureString, cifrados con la clave administrada aws/ssm).
+# El userData los lee al arrancar: no viajan en el userData ni en el launch template. Si el
+# parámetro ya existe fuera del estado (otro despliegue en la misma cuenta), el apply falla con
+# ParameterAlreadyExists: borrarlo o importarlo (`overwrite` está obsoleto en el provider).
+resource "aws_ssm_parameter" "db_password" {
+  name        = "/${local.name_prefix}/db_password"
+  description = "Contraseña de MySQL (RDS) de la API."
+  type        = "SecureString"
+  value       = var.db_password
+}
+
+resource "aws_ssm_parameter" "jwt_secret" {
+  name        = "/${local.name_prefix}/jwt_secret"
+  description = "Secreto con el que la API firma los JWT."
+  type        = "SecureString"
+  value       = var.jwt_secret
+}
+
+# Artefacto de la app (lo genera scripts/package-app.sh). La clave incluye el hash del zip:
+# código nuevo -> clave nueva -> userData nuevo -> versión nueva del launch template -> ASG nuevo
+# (reemplazo sin caída, ver modules/compute).
+#
+resource "aws_s3_object" "app_artifact" {
+  bucket = local.artifacts_bucket_name
+  key    = "releases/app-${local.app_artifact_md5}.zip"
+  source = var.app_artifact_path
+  # source_hash y no etag: el zip pesa más de 5 MB y se sube en partes (multipart), así que el ETag
+  # de S3 no coincide con el md5 del archivo y el plan mostraría un cambio en cada ejecución.
+  source_hash = local.app_artifact_md5
+
+  lifecycle {
+    precondition {
+      condition     = local.app_artifact_md5 != ""
+      error_message = "No existe ${var.app_artifact_path}: ejecutar ./scripts/package-app.sh antes de terraform apply."
+    }
+  }
+}
+
+locals {
+  # El userData se renderiza aquí (la raíz conoce los outputs de todos los módulos) y compute
+  # lo recibe como texto. Los nombres de los parámetros se pasan por referencia para que
+  # Terraform los cree antes que el launch template. Sus versiones (no los valores) entran al
+  # userData: rotar un secreto cambia la versión y reemplaza las instancias.
+  user_data = templatefile("${path.module}/../scripts/user-data.sh.tftpl", {
+    aws_region          = var.aws_region
+    db_password_param   = aws_ssm_parameter.db_password.name
+    jwt_secret_param    = aws_ssm_parameter.jwt_secret.name
+    db_password_version = aws_ssm_parameter.db_password.version
+    jwt_secret_version  = aws_ssm_parameter.jwt_secret.version
+    db_host             = module.rds.db_address
+    db_port             = module.rds.db_port
+    db_name             = var.db_name
+    db_user             = var.db_username
+    ddb_table           = var.dynamodb_table_name
+    docs_bucket         = local.docs_bucket_name
+    sns_topic_arn       = local.sns_topic_arn
+    artifacts_bucket    = local.artifacts_bucket_name
+    artifact_key        = aws_s3_object.app_artifact.key
+  })
+}
+
+module "compute" {
+  source = "./modules/compute"
+
+  name_prefix           = local.name_prefix
+  vpc_id                = module.network.vpc_id
+  public_subnet_ids     = module.network.public_subnet_ids
+  private_subnet_ids    = module.network.private_subnet_ids
+  alb_security_group_id = module.network.alb_security_group_id
+  app_security_group_id = module.network.app_security_group_id
+  instance_type         = var.instance_type
+  instance_profile_name = local.instance_profile_name
+  root_volume_size      = var.root_volume_size
+  asg_min_size          = var.asg_min_size
+  asg_max_size          = var.asg_max_size
+  asg_desired_capacity  = var.asg_desired_capacity
+  user_data             = local.user_data
+
+  # La bucket policy de artifacts debe existir antes de que las instancias bajen el zip.
+  depends_on = [module.storage]
+}
+
 # --- cdn (B5)
 
 # --- monitoring (B9)

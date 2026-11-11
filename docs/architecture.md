@@ -97,6 +97,7 @@ Todas las rutas empiezan por `/api` (CloudFront enruta `/api/*` al ALB). JSON en
 | Método y ruta | Auth | Request | Respuesta exitosa | Errores |
 | --- | --- | --- | --- | --- |
 | `GET /api/health` | No | — | `200 {"status":"ok"}` (no toca la base) | — |
+| `GET /api/ready` | No | — | `200 {"status":"ready","checks":{"mysql":"ok"}}` (`SELECT 1` a MySQL) | 503 |
 | `POST /api/auth/register` | No | `{email, password}` (≥ 8 caracteres) | `201 {id, email}` | 400, 409 |
 | `POST /api/auth/login` | No | `{email, password}` | `200 {token, expiresIn: 3600}` | 400, 401 |
 | `POST /api/documents` | Sí | `{filename, contentType, size}` | `201 {documentId, uploadUrl, method:"PUT", headers:{"Content-Type"}, key, expiresIn: 900}` | 400, 401 |
@@ -158,6 +159,7 @@ La app **no** debe usar operaciones de listado de cuenta (`ListBuckets`, `ListTa
 | El instance profile tiene un nombre generado (`…-SsmRoleInstanceProfile-…`) distinto en cada cuenta | Se descubre con `data "aws_iam_instance_profiles"` a partir del nombre del rol; nunca `data "aws_iam_role"` |
 | `RunInstances` con volúmenes **gp3** → *explicit deny* (la AMI AL2023 trae gp3) | Disco raíz forzado a **gp2** |
 | `s3:GetBucketObjectLockConfiguration` → *explicit deny*; `aws_s3_bucket` falla (providers 4.x, 5.x y 6.x) | Buckets con `awscc_s3_bucket` + sub-recursos de `aws` + vaciado al destruir (`scripts/empty-bucket.sh`) |
+| `autoscaling:StartInstanceRefresh` → *explicit deny* de una SCP (A4, 2026-11-09) | Sin `instance_refresh`: el ASG lleva la versión del launch template en el nombre y se reemplaza sin caída (`create_before_destroy` + `wait_for_elb_capacity`; no es azul/verde estricto: los dos ASG comparten el target group durante el cambio) |
 | Sin NAT no hay STS ni internet; SSM, S3, DynamoDB, SNS y `dnf` funcionan por endpoints | `enable_nat_gateway = false`; dependencias de Node.js (`node_modules`) empaquetadas en el artefacto |
 | La topic policy de SNS no acepta `sns:*`; `s3:HeadObject` no es una acción válida | Listar acciones concretas en las políticas |
 
@@ -193,6 +195,7 @@ DynamoDB Local acepta cualquier credencial; las de arriba (`local`) evitan usar 
 - **Build:** `npm ci && npm run build` en `frontend/`; se publica `frontend/dist/`, no el código fuente.
 - **CORS del bucket de documentos:** el `PUT` de la URL prefirmada va directo del navegador a S3. El bucket debe permitir `PUT`, `GET` y `HEAD` desde `http://localhost:5500`, `http://127.0.0.1:5500` y el dominio de CloudFront, con `AllowedHeaders: ["Content-Type"]`.
 - **Orígenes CORS en B2:** el módulo usa orígenes explícitos (`localhost:5500` y `127.0.0.1:5500`). B5 debe añadir el dominio de CloudFront sin pasar `module.cdn.cloudfront_domain_name` a `module.storage`, porque eso crea un ciclo; la regla CORS puede gestionarse en la raíz después de crear ambos módulos.
-- **Health del ALB:** el target group debe apuntar a `GET /api/health`.
+- **Health del ALB:** el target group debe apuntar a `GET /api/health` (superficial: una caída de RDS no recicla las instancias).
+- **Readiness al arrancar:** el userData espera `GET /api/ready` (MySQL) antes de dar por lista la instancia. Si no responde, apaga la API: la instancia nunca queda healthy, el despliegue no avanza y el ASG anterior sigue atendiendo.
 
 El CORS del bucket y el behavior de CloudFront se implementan en B2/B5; el health check en A3.

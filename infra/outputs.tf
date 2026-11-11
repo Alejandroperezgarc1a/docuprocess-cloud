@@ -42,3 +42,13 @@ output "artifacts_bucket_name" {
   description = "Bucket de artefactos de la aplicación (B2)."
   value       = module.storage.artifacts_bucket_name
 }
+
+output "alb_dns_name" {
+  description = "DNS público del ALB (A3). Con CloudFront (B7) el acceso normal es por app_url."
+  value       = module.compute.alb_dns_name
+}
+
+output "asg_name" {
+  description = "Auto Scaling Group de la app (A3)."
+  value       = module.compute.asg_name
+}
