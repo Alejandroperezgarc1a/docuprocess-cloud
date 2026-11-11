@@ -4,6 +4,9 @@ export interface Config {
   ddbTable: string;
   ddbEventsTable: string;
   /** When false, state and audit event are written sequentially (Sandbox fallback). */
+  // Por qué: el alta debe escribir documento + evento de forma atómica. Si una SCP
+  // deniega TransactWriteItems, DDB_TRANSACTIONS=false permite seguir operando (sin
+  // atomicidad) en vez de bloquear toda la plataforma.
   ddbTransactions: boolean;
   dbHost: string;
   dbPort: number;
@@ -19,6 +22,8 @@ export interface Config {
 const REQUIRED_ENV = [
   'DOCS_BUCKET',
   'DDB_TABLE',
+  // Obligatoria a propósito: sin la tabla de eventos la API arrancaba "a medias"
+  // (subidas sin bitácora). Fallar rápido al arranque es preferible a datos huérfanos.
   'DDB_EVENTS_TABLE',
   'DB_HOST',
   'DB_NAME',
@@ -76,6 +81,9 @@ export function loadConfig(
     throw new ConfigError('DB_PORT debe estar entre 1 y 65535');
   }
 
+  // Default 'true': la atomicidad es el comportamiento normal; false es solo el
+  // escape hatch del Sandbox (ver docs/architecture.md, sección 12). Se valida de
+  // forma estricta para no aceptar typos como 'si' o '1'.
   const transactionsRaw = (env.DDB_TRANSACTIONS ?? 'true').trim().toLowerCase();
   if (transactionsRaw !== 'true' && transactionsRaw !== 'false') {
     throw new ConfigError('DDB_TRANSACTIONS debe ser true o false');

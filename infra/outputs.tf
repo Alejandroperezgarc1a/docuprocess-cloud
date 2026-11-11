@@ -23,6 +23,8 @@ output "vpc_id" {
   value       = module.network.vpc_id
 }
 
+# B3: los dos outputs son el nombre exacto de las tablas; los consume la API vía
+# /etc/docuprocess.env (DDB_TABLE / DDB_EVENTS_TABLE). No exponen datos sensibles.
 output "dynamodb_table_name" {
   description = "Tabla de documentos: estado actual y cola del worker (B3)."
   value       = module.dynamodb.table_name

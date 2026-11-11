@@ -224,6 +224,13 @@ variable "jwt_secret" {
 # Datos y notificaciones (B2, B3, B4, B9)
 # -----------------------------------------------------------------------------
 
+# B3: la aplicación usa DOS tablas DynamoDB. `documents` guarda el estado actual
+# (se actualiza: PENDING -> PROCESSING -> DONE/FAILED) y funciona como cola del
+# worker. `document_events` es la bitácora de cambios: es append-only (la app no
+# puede actualizar ni borrar eventos) y responde a "quién cambió qué y cuándo".
+# Se separan porque el estado es una proyección (se reescribe) y el historial es
+# la verdad (solo se añade). Ver docs/architecture.md §4.1 y docs/rds-vs-dynamodb.md.
+
 variable "dynamodb_table_name" {
   description = "Nombre de la tabla de documentos (estado y cola del worker)."
   type        = string
@@ -242,6 +249,9 @@ variable "enable_dynamodb_transactions" {
   default     = true
 }
 
+# El default del Sandbox es true, pero puede denegar Point-in-time recovery (PITR).
+# PITR permite restaurar a un segundo exacto de los últimos 35 días; si la SCP lo
+# deniega, poner en false en terraform.tfvars y el módulo lo desactiva sin más cambios.
 variable "enable_point_in_time_recovery" {
   description = "Activa point-in-time recovery en las tablas DynamoDB. Poner en false si el Sandbox lo deniega."
   type        = bool

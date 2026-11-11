@@ -134,8 +134,10 @@ export function registerDocumentRoutes(
       updatedAt: timestamp,
     };
 
-    // Evento inicial de la bitácora. actor=api y fromStatus ausente (no hay estado anterior).
-    // eventAt lleva un sufijo aleatorio para que dos eventos del mismo milisegundo no colisionen.
+    // Evento inicial de la bitácora. actor=api (lo produce la API, no el worker) y fromStatus
+    // ausente (no hay estado anterior). eventDay se materializa porque DynamoDB no permite
+    // funciones en las claves del GSI day-eventAt. eventAt lleva un sufijo aleatorio para que
+    // dos eventos del mismo milisegundo no colisionen en la clave (documentId, eventAt).
     const event: DocumentEvent = {
       documentId,
       eventAt: `${timestamp}#${randomUUID().slice(0, 6)}`,
@@ -206,6 +208,7 @@ export function registerDocumentRoutes(
 
     const rawDocumentId = req.params.documentId;
     const documentId = typeof rawDocumentId === 'string' ? rawDocumentId : '';
+    // 404 (no 400) para no revelar si el id existe: mismo criterio que el resto del API.
     if (!UUID_RE.test(documentId)) {
       errorResponse(res, 'not_found', 'Documento no encontrado.', 404);
       return;
@@ -228,6 +231,8 @@ export function registerDocumentRoutes(
       return;
     }
 
+    // 404 (no 403): un usuario no puede distinguir "no existe" de "es de otro". Se evita
+    // revelar la existencia del recurso — y de paso, la propiedad se comprueba siempre.
     if (item === undefined || item.userId !== userId) {
       errorResponse(res, 'not_found', 'Documento no encontrado.', 404);
       return;
@@ -247,6 +252,7 @@ export function registerDocumentRoutes(
 
     const rawDocumentId = req.params.documentId;
     const documentId = typeof rawDocumentId === 'string' ? rawDocumentId : '';
+    // 404 (no 400) para no revelar si el id existe: mismo criterio que el resto del API.
     if (!UUID_RE.test(documentId)) {
       errorResponse(res, 'not_found', 'Documento no encontrado.', 404);
       return;
@@ -271,6 +277,8 @@ export function registerDocumentRoutes(
       return;
     }
 
+    // 404 (no 403): un usuario no puede distinguir "no existe" de "es de otro". Se evita
+    // revelar la existencia del recurso — y de paso, la propiedad se comprueba siempre.
     if (item === undefined || item.userId !== userId) {
       errorResponse(res, 'not_found', 'Documento no encontrado.', 404);
       return;

@@ -81,8 +81,12 @@ export class FakeDb implements Db {
   }
 }
 
+// Fake en memoria de AwsService: imita DynamoDB/S3 sin credenciales ni Docker.
+// La bitácora se acumula en `events`; las pruebas de orden cronológico y de fallo usan
+// `failEventsQuery` para simular un error de DynamoDB contra la tabla document_events.
 export class FakeAws implements AwsService {
   readonly documents = new Map<string, DocumentItem>();
+  // Array de eventos append-only: createDocument agrega sin eliminar, como la tabla real.
   readonly events: DocumentEvent[] = [];
   failHealth = false;
   failPut = false;
@@ -101,6 +105,8 @@ export class FakeAws implements AwsService {
     if (this.failPut) {
       throw new Error('DynamoDB apagado');
     }
+    // En producción esto va dentro de una transacción DynamoDB; aquí el fake guarda ambos,
+    // como haría el caso exitoso de TransactWriteItems.
     this.documents.set(item.documentId, structuredClone(item));
     this.events.push(structuredClone(event));
   }

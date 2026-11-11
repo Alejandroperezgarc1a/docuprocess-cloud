@@ -70,6 +70,9 @@ module "network" {
 
 # --- dynamodb (B3)
 
+# Crea las dos tablas (documents y document_events) con sus GSIs y sus políticas de
+# recurso. El rol de las instancias solo tiene SSM; por eso el acceso a datos se concede
+# con políticas basadas en el recurso (ver modules/dynamodb/main.tf), no con IAM.
 module "dynamodb" {
   source = "./modules/dynamodb"
 
@@ -107,7 +110,9 @@ locals {
   artifacts_bucket_name = ""
   sns_topic_arn         = ""
 
-  # B3: la app escribe en dos tablas (estado y bitácora).
+  # B3: la app escribe en dos tablas (estado y bitácora). Estos locales se inyectan en
+  # el userData -> /etc/docuprocess.env -> la API los lee como DDB_TABLE y
+  # DDB_EVENTS_TABLE al arrancar.
   ddb_table        = module.dynamodb.table_name
   ddb_events_table = module.dynamodb.events_table_name
 

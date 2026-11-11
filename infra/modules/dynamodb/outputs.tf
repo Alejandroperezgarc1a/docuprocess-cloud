@@ -1,3 +1,6 @@
+# Salidas del módulo dynamodb: los nombres (DDB_TABLE / DDB_EVENTS_TABLE) y los
+# ARNs (para depuración y políticas). La raíz lo reexporta para el userData.
+
 output "table_name" {
   description = "Nombre de la tabla documents (DDB_TABLE de la app)."
   value       = aws_dynamodb_table.documents.name

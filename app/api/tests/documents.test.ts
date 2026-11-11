@@ -402,6 +402,7 @@ describe('documents', () => {
   });
 
   it('404 en la bitacora de otro usuario, inexistente o mal formada', async () => {
+    // 404 en los tres casos: el API no revela si el documento existe o pertenece a otro.
     const context = makeApp();
     const userA = await registerAndLogin(context.app, 'a@example.com');
     const userB = await registerAndLogin(context.app, 'b@example.com');
@@ -437,6 +438,7 @@ describe('documents', () => {
   });
 
   it('503 si DynamoDB falla al leer la bitacora', async () => {
+    // 503 (no 500): la API distingue errores de dependencia de errores internos.
     const context = makeApp();
     const { headers } = await registerAndLogin(context.app);
     const created = await createDocument(context, headers);

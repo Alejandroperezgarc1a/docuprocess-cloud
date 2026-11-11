@@ -11,6 +11,9 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Config } from './config.js';
 import type { DocumentEvent, DocumentItem } from './types.js';
 
+// Los GSI (índices secundarios globales) son consultas preconstruidas: DynamoDB no
+// permite hacer WHERE libre, así que cada patrón de acceso tiene su índice (docs/
+// rds-vs-dynamodb.md). Estos límites evitan respuestas enormes y costos inesperados.
 const GSI_NAME = 'userId-createdAt';
 const DOCUMENT_LIST_LIMIT = 50;
 const EVENT_LIST_LIMIT = 200;
@@ -50,7 +53,7 @@ export function createAwsService(config: Config): AwsService {
   });
 
   return {
-    /** Reads a fixed key to confirm that DynamoDB responds. */
+    /** Lee una clave fija para confirmar que DynamoDB responde (sin crear datos). */
     async healthCheck(): Promise<void> {
       await ddb.send(
         new GetCommand({
@@ -98,7 +101,7 @@ export function createAwsService(config: Config): AwsService {
       await ddb.send(new PutCommand(eventPut));
     },
 
-    /** Queries the user's documents with a descending sort and a limit of 50. */
+    /** Devuelve los documentos del usuario, más recientes primero (límite 50). */
     async queryUserDocuments(userId: string): Promise<DocumentItem[]> {
       const output = await ddb.send(
         new QueryCommand({
@@ -107,26 +110,26 @@ export function createAwsService(config: Config): AwsService {
           KeyConditionExpression: '#userId = :userId',
           ExpressionAttributeNames: { '#userId': 'userId' },
           ExpressionAttributeValues: { ':userId': userId },
-          ScanIndexForward: false,
+          ScanIndexForward: false, // false: del más reciente al más antiguo
           Limit: DOCUMENT_LIST_LIMIT,
         }),
       );
       return (output.Items ?? []) as DocumentItem[];
     },
 
-    /** Fetches one document using ConsistentRead. */
+    /** Lee un documento con lectura fuertemente consistente (no una copia del GSI atrasada). */
     async getDocument(documentId: string): Promise<DocumentItem | undefined> {
       const output = await ddb.send(
         new GetCommand({
           TableName: config.ddbTable,
           Key: { documentId },
-          ConsistentRead: true,
+          ConsistentRead: true, // el worker y el endpoint de detalle leen el estado vigente, no una réplica
         }),
       );
       return output.Item as DocumentItem | undefined;
     },
 
-    /** Queries the audit trail of a document in ascending (chronological) order. */
+    /** Devuelve la bitácora del documento en orden cronológico (ascendente, máx. 200). */
     async queryDocumentEvents(documentId: string): Promise<DocumentEvent[]> {
       const output = await ddb.send(
         new QueryCommand({
@@ -134,14 +137,14 @@ export function createAwsService(config: Config): AwsService {
           KeyConditionExpression: '#documentId = :documentId',
           ExpressionAttributeNames: { '#documentId': 'documentId' },
           ExpressionAttributeValues: { ':documentId': documentId },
-          ScanIndexForward: true,
+          ScanIndexForward: true, // true: del evento más antiguo al más reciente (orden de la bitácora)
           Limit: EVENT_LIST_LIMIT,
         }),
       );
       return (output.Items ?? []) as DocumentEvent[];
     },
 
-    /** Returns a SigV4 pre-signed URL valid for 900 seconds. */
+    /** Devuelve una URL firmada (SigV4) válida 900 s para subir directo a S3 desde el navegador. */
     async presignUpload(key: string, contentType: string): Promise<string> {
       return getSignedUrl(
         s3,
@@ -150,7 +153,12 @@ export function createAwsService(config: Config): AwsService {
           Key: key,
           ContentType: contentType,
         }),
-        { expiresIn: PRESIGN_EXPIRES_SECONDS, signableHeaders: new Set(['content-type']) },
+        {
+          expiresIn: PRESIGN_EXPIRES_SECONDS,
+          // Solo content-type se firma: el navegador debe enviar exactamente el mismo
+          // Content-Type declarado o S3 rechaza la subida.
+          signableHeaders: new Set(['content-type']),
+        },
       );
     },
   };

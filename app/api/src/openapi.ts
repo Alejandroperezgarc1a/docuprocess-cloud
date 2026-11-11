@@ -336,6 +336,8 @@ export const openApiSpec = {
         },
       },
     },
+    // Bitácora auditable: 404 (no 403) para documento ajeno o inexistente, para no revelar si
+    // el documentId existe. El orden es cronológico ascendente, como un log de eventos.
     '/api/documents/{documentId}/events': {
       get: {
         tags: ['Documents'],
@@ -568,6 +570,8 @@ export const openApiSpec = {
           error: { type: 'string' },
         },
       },
+      // Espejo de app/api/src/types.ts (DocumentEvent): la API nunca escribe actualizaciones
+      // sobre este esquema; un cambio de formato implica schemaVersion +1.
       DocumentEvent: {
         type: 'object',
         required: [
