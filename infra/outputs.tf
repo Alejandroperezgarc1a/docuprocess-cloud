@@ -1,7 +1,7 @@
 # Outputs raíz. Cada tarea agrega los suyos (ver docs/architecture.md, sección 10):
 # alb_dns_name, cloudfront_domain_name, cloudfront_distribution_id, app_url, docs_bucket_name,
-# frontend_bucket_name, artifacts_bucket_name, dynamodb_table_name, sns_topic_arn, rds_endpoint,
-# asg_name, vpc_id.
+# frontend_bucket_name, artifacts_bucket_name, dynamodb_table_name, dynamodb_events_table_name,
+# sns_topic_arn, rds_endpoint, asg_name, vpc_id.
 
 output "account_id" {
   description = "Cuenta de AWS donde se despliega (útil para no confundir sesiones del Sandbox)."
@@ -21,6 +21,16 @@ output "app_role_arn" {
 output "vpc_id" {
   description = "VPC de la aplicación (A2)."
   value       = module.network.vpc_id
+}
+
+output "dynamodb_table_name" {
+  description = "Tabla de documentos: estado actual y cola del worker (B3)."
+  value       = module.dynamodb.table_name
+}
+
+output "dynamodb_events_table_name" {
+  description = "Tabla de eventos: bitácora append-only de cambios de estado (B3)."
+  value       = module.dynamodb.events_table_name
 }
 
 output "rds_endpoint" {

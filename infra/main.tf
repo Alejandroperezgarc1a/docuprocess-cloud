@@ -70,6 +70,15 @@ module "network" {
 
 # --- dynamodb (B3)
 
+module "dynamodb" {
+  source = "./modules/dynamodb"
+
+  table_name                    = var.dynamodb_table_name
+  events_table_name             = var.document_events_table_name
+  app_role_arn                  = local.app_role_arn
+  enable_point_in_time_recovery = var.enable_point_in_time_recovery
+}
+
 # --- sns (B4)
 
 # --- rds (A5)
@@ -92,12 +101,15 @@ locals {
   #   B2: module.storage.docs_bucket_name y module.storage.artifacts_bucket_name (los DOS en el
   #       mismo cambio: la API no arranca sin DOCS_BUCKET) y depends_on = [module.storage] en
   #       module.compute, para que la bucket policy exista antes de que las instancias bajen el zip.
-  #   B3: module.dynamodb.table_name en ddb_table (hoy var.dynamodb_table_name).
   #   B6: module.sns.topic_arn
   # Mientras falte alguno de los dos buckets, el userData levanta el servidor provisional.
   docs_bucket_name      = ""
   artifacts_bucket_name = ""
   sns_topic_arn         = ""
+
+  # B3: la app escribe en dos tablas (estado y bitácora).
+  ddb_table        = module.dynamodb.table_name
+  ddb_events_table = module.dynamodb.events_table_name
 
   # md5 del zip, o "" si no existe (la precondición de app_artifact explica qué hacer).
   app_artifact_md5 = fileexists(var.app_artifact_path) ? filemd5(var.app_artifact_path) : ""
@@ -165,7 +177,9 @@ locals {
     db_port             = module.rds.db_port
     db_name             = var.db_name
     db_user             = var.db_username
-    ddb_table           = var.dynamodb_table_name
+    ddb_table           = local.ddb_table
+    ddb_events_table    = local.ddb_events_table
+    ddb_transactions    = var.enable_dynamodb_transactions ? "true" : "false"
     docs_bucket         = local.docs_bucket_name
     sns_topic_arn       = local.sns_topic_arn
     artifacts_bucket    = local.artifacts_bucket_name
