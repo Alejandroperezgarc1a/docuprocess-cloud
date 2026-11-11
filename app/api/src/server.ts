@@ -28,9 +28,9 @@ function startWorker(): void {
       `${new Date().toISOString()} INFO docuprocess.api: escuchando en 0.0.0.0:${PORT} (pid ${process.pid})`,
     );
 
+  });
   server.keepAliveTimeout = 65000; // más que los 60 s del ALB
   server.headersTimeout = 66000;   // debe ser mayor que keepAliveTimeout
-  });
 
   let shuttingDown = false;
   const shutdown = (signal: string): void => {
