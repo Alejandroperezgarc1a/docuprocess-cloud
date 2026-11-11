@@ -24,8 +24,9 @@ output "frontend_bucket_regional_domain_name" {
 }
 
 output "artifacts_bucket_name" {
-  description = "Nombre del bucket de artefactos."
+  description = "Nombre del bucket de artefactos (disponible cuando su bucket policy ya existe)."
   value       = awscc_s3_bucket.this["artifacts"].id
+  depends_on  = [aws_s3_bucket_policy.artifacts]
 }
 
 output "artifacts_bucket_arn" {

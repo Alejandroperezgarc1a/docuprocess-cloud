@@ -166,25 +166,34 @@ resource "aws_s3_bucket_policy" "artifacts" {
 # S3 exige vaciar un bucket antes de borrarlo. terraform_data se destruye antes
 # que los buckets y ejecuta el script que elimina objetos, versiones y uploads
 # multipart incompletos.
+# Se ha ajustado triggers_replace para que incluya solo los ids de los buckets.
+# La región y el script se mueven a `input`, de modo que cambios de carpeta o re-clone
+# no provocan replacement del recurso terraform_data ni destrucción de los buckets.
 resource "terraform_data" "empty_buckets" {
   count = var.force_destroy_buckets ? 1 : 0
 
+  # Solo los ids de bucket: si un bucket se reemplaza, el script vacía el viejo antes
+  # de borrarlo. La ruta del script y la región van en `input` (update in place),
+  # por lo que mover el repositorio o aplicarlo en otra máquina no dispara destroy.
   triggers_replace = {
     docs      = awscc_s3_bucket.this["docs"].id
     frontend  = awscc_s3_bucket.this["frontend"].id
     artifacts = awscc_s3_bucket.this["artifacts"].id
-    region    = var.aws_region
-    script    = local.empty_script
+  }
+
+  input = {
+    region = var.aws_region
+    script = local.empty_script
   }
 
   depends_on = [awscc_s3_bucket.this]
 
   provisioner "local-exec" {
     when    = destroy
-    command = "bash \"${self.triggers_replace.script}\" ${self.triggers_replace.docs} ${self.triggers_replace.frontend} ${self.triggers_replace.artifacts}"
+    command = "bash \"${self.input.script}\" ${self.triggers_replace.docs} ${self.triggers_replace.frontend} ${self.triggers_replace.artifacts}"
 
     environment = {
-      AWS_REGION = self.triggers_replace.region
+      AWS_REGION = self.input.region
     }
   }
 }

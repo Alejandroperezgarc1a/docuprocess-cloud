@@ -189,8 +189,9 @@ module "compute" {
   asg_desired_capacity  = var.asg_desired_capacity
   user_data             = local.user_data
 
-  # La bucket policy de artifacts debe existir antes de que las instancias bajen el zip.
-  depends_on = [module.storage]
+  # La bucket policy de artifacts se gestiona mediante el depends_on del output
+  # artifacts_bucket_name; quitar depends_on de módulo evita que cualquier cambio
+  # en storage difiera los data sources (AMI, tags) a apply time y reemplace el ASG.
 }
 
 # --- cdn (B5)

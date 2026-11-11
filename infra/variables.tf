@@ -255,7 +255,7 @@ variable "alert_email" {
 }
 
 variable "force_destroy_buckets" {
-  description = "Vacía los buckets antes de destruirlos (terraform_data + scripts/empty-bucket.sh)."
+  description = "Vacía los buckets antes de destruirlos (terraform_data + scripts/empty-bucket.sh). Al desactivarla en un despliegue vivo, terraform_data se destruye y vacía los buckets una vez."
   type        = bool
   default     = true
 }
