@@ -27,6 +27,9 @@ function startWorker(): void {
     console.log(
       `${new Date().toISOString()} INFO docuprocess.api: escuchando en 0.0.0.0:${PORT} (pid ${process.pid})`,
     );
+
+  server.keepAliveTimeout = 65000; // más que los 60 s del ALB
+  server.headersTimeout = 66000;   // debe ser mayor que keepAliveTimeout
   });
 
   let shuttingDown = false;
@@ -38,6 +41,9 @@ function startWorker(): void {
     console.log(
       `${new Date().toISOString()} INFO docuprocess.api: ${signal} recibido, cerrando (pid ${process.pid})`,
     );
+
+  server.keepAliveTimeout = 65000; // más que los 60 s del ALB
+  server.headersTimeout = 66000;   // debe ser mayor que keepAliveTimeout
     server.close(() => {
       void db.close().finally(() => process.exit(0));
     });
@@ -63,6 +69,9 @@ function startPrimary(workers: number): void {
     console.error(
       `${new Date().toISOString()} ERROR docuprocess.api: worker ${worker.process.pid ?? '?'} termino (code=${code}, signal=${signal}); reiniciando`,
     );
+
+  server.keepAliveTimeout = 65000; // más que los 60 s del ALB
+  server.headersTimeout = 66000;   // debe ser mayor que keepAliveTimeout
     cluster.fork();
   });
 
@@ -74,6 +83,9 @@ function startPrimary(workers: number): void {
     console.log(
       `${new Date().toISOString()} INFO docuprocess.api: ${signal} recibido, cerrando workers`,
     );
+
+  server.keepAliveTimeout = 65000; // más que los 60 s del ALB
+  server.headersTimeout = 66000;   // debe ser mayor que keepAliveTimeout
     for (const worker of Object.values(cluster.workers ?? {})) {
       worker?.kill('SIGTERM');
     }
@@ -101,6 +113,9 @@ try {
     console.error(
       `${new Date().toISOString()} ERROR docuprocess.api: configuracion invalida: ${error.message}`,
     );
+
+  server.keepAliveTimeout = 65000; // más que los 60 s del ALB
+  server.headersTimeout = 66000;   // debe ser mayor que keepAliveTimeout
     process.exit(1);
   }
   throw error;
