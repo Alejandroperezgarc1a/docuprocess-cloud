@@ -161,6 +161,24 @@ resource "aws_autoscaling_group" "app" {
   health_check_type         = "ELB"
   health_check_grace_period = 300
 
+  # Warmup del grupo (A7): durante estos segundos una instancia recién lanzada no cuenta en la CPU
+  # promedio del target tracking, así una máquina que aún arranca (0 % o 100 % de CPU) no distorsiona
+  # la decisión. AWS recomienda definirlo aquí y no en la política.
+  default_instance_warmup = var.instance_warmup
+
+  # Métricas del grupo en CloudWatch, cada minuto y sin costo: permiten ver en A8 cómo cambian la
+  # capacidad deseada y las instancias en servicio durante la prueba de carga.
+  metrics_granularity = "1Minute"
+  enabled_metrics = [
+    "GroupMinSize",
+    "GroupMaxSize",
+    "GroupDesiredCapacity",
+    "GroupInServiceInstances",
+    "GroupPendingInstances",
+    "GroupTerminatingInstances",
+    "GroupTotalInstances",
+  ]
+
   # Versión fija (latest_version, un número) y no "$Latest": cada ASG queda atado a la versión
   # con la que nació, y el cambio de versión es lo que dispara el reemplazo.
   launch_template {
