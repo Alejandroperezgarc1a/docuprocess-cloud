@@ -120,7 +120,7 @@ Formato de error: `{"error": "<codigo>", "message": "<texto legible>"}`.
 
 **Locals compartidos (raíz):** `name_prefix = "${project_name}-${environment}"` (por defecto `docuprocess-dev`), `instance_profile_name` (descubierto) y `app_role_arn` (construido).
 
-**Variables raíz:** ver `infra/variables.tf` (C2). Las principales son `aws_region`, `project_name`, `environment`, `azs`, `vpc_cidr`, `public_subnet_cidrs`, `private_subnet_cidrs`, `enable_nat_gateway`, `enable_interface_endpoints`, `instance_type`, `instance_role_name`, `asg_min_size`, `asg_max_size`, `asg_desired_capacity`, `cpu_target_value`, `root_volume_size`, `db_name`, `db_username`, `db_password`, `jwt_secret`, `alert_email`, `dynamodb_table_name`, `app_artifact_path` y `force_destroy_buckets`.
+**Variables raíz:** ver `infra/variables.tf` (C2). Las principales son `aws_region`, `project_name`, `environment`, `azs`, `vpc_cidr`, `public_subnet_cidrs`, `private_subnet_cidrs`, `enable_nat_gateway`, `enable_interface_endpoints`, `instance_type`, `instance_role_name`, `asg_min_size`, `asg_max_size`, `asg_desired_capacity`, `cpu_target_value`, `root_volume_size`, `db_name`, `db_username`, `db_password`, `jwt_secret`, `alert_email`, `dynamodb_table_name`, `app_artifact_path`, `cors_allowed_origins` y `force_destroy_buckets`.
 
 **Outputs por módulo** (nombres exactos):
 
@@ -194,6 +194,7 @@ DynamoDB Local acepta cualquier credencial; las de arriba (`local`) evitan usar 
 - **Producción:** CloudFront sirve `frontend/dist/` en la raíz y enruta `/api/*` al ALB. El frontend usa rutas relativas. El behavior de `/api/*` no debe cachear y debe reenviar `Authorization`, `Content-Type` y `Origin`.
 - **Build:** `npm ci && npm run build` en `frontend/`; se publica `frontend/dist/`, no el código fuente.
 - **CORS del bucket de documentos:** el `PUT` de la URL prefirmada va directo del navegador a S3. El bucket debe permitir `PUT`, `GET` y `HEAD` desde `http://localhost:5500`, `http://127.0.0.1:5500` y el dominio de CloudFront, con `AllowedHeaders: ["Content-Type"]`.
+- **Orígenes CORS en B2:** el módulo usa orígenes explícitos (`localhost:5500` y `127.0.0.1:5500`). B5 debe añadir el dominio de CloudFront sin pasar `module.cdn.cloudfront_domain_name` a `module.storage`, porque eso crea un ciclo; la regla CORS puede gestionarse en la raíz después de crear ambos módulos.
 - **Health del ALB:** el target group debe apuntar a `GET /api/health` (superficial: una caída de RDS no recicla las instancias).
 - **Readiness al arrancar:** el userData espera `GET /api/ready` (MySQL) antes de dar por lista la instancia. Si no responde, apaga la API: la instancia nunca queda healthy, el despliegue no avanza y el ASG anterior sigue atendiendo.
 

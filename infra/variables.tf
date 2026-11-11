@@ -224,6 +224,20 @@ variable "jwt_secret" {
 # Datos y notificaciones (B2, B3, B4, B9)
 # -----------------------------------------------------------------------------
 
+variable "cors_allowed_origins" {
+  description = "Orígenes permitidos para el PUT prefirmado al bucket de documentos."
+  type        = list(string)
+  default     = ["http://localhost:5500", "http://127.0.0.1:5500"]
+
+  validation {
+    condition = length(var.cors_allowed_origins) > 0 && alltrue([
+      for origin in var.cors_allowed_origins :
+      origin == "*" || can(regex("^https?://[^/]+$", origin))
+    ])
+    error_message = "cors_allowed_origins debe contener orígenes http(s) válidos o '*'."
+  }
+}
+
 variable "dynamodb_table_name" {
   description = "Nombre de la tabla de documentos."
   type        = string
@@ -241,7 +255,18 @@ variable "alert_email" {
 }
 
 variable "force_destroy_buckets" {
-  description = "Vacía los buckets antes de destruirlos (terraform_data + scripts/empty-bucket.sh)."
+  description = "Vacía los buckets antes de destruirlos (terraform_data + scripts/empty-bucket.sh). Al desactivarla en un despliegue vivo, terraform_data se destruye y vacía los buckets una vez."
   type        = bool
   default     = true
+}
+
+variable "docs_lifecycle_expiration_days" {
+  description = "Días para expirar objetos bajo uploads/ en el bucket de documentos. 0 desactiva la regla."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.docs_lifecycle_expiration_days >= 0
+    error_message = "docs_lifecycle_expiration_days debe ser 0 o un número positivo."
+  }
 }

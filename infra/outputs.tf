@@ -28,6 +28,21 @@ output "rds_endpoint" {
   value       = module.rds.db_address
 }
 
+output "docs_bucket_name" {
+  description = "Bucket de documentos de usuario (B2)."
+  value       = module.storage.docs_bucket_name
+}
+
+output "frontend_bucket_name" {
+  description = "Bucket del frontend estático (B2)."
+  value       = module.storage.frontend_bucket_name
+}
+
+output "artifacts_bucket_name" {
+  description = "Bucket de artefactos de la aplicación (B2)."
+  value       = module.storage.artifacts_bucket_name
+}
+
 output "alb_dns_name" {
   description = "DNS público del ALB (A3). Con CloudFront (B7) el acceso normal es por app_url."
   value       = module.compute.alb_dns_name
