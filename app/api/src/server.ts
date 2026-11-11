@@ -42,8 +42,6 @@ function startWorker(): void {
       `${new Date().toISOString()} INFO docuprocess.api: ${signal} recibido, cerrando (pid ${process.pid})`,
     );
 
-  server.keepAliveTimeout = 65000; // más que los 60 s del ALB
-  server.headersTimeout = 66000;   // debe ser mayor que keepAliveTimeout
     server.close(() => {
       void db.close().finally(() => process.exit(0));
     });
@@ -70,8 +68,6 @@ function startPrimary(workers: number): void {
       `${new Date().toISOString()} ERROR docuprocess.api: worker ${worker.process.pid ?? '?'} termino (code=${code}, signal=${signal}); reiniciando`,
     );
 
-  server.keepAliveTimeout = 65000; // más que los 60 s del ALB
-  server.headersTimeout = 66000;   // debe ser mayor que keepAliveTimeout
     cluster.fork();
   });
 
@@ -84,8 +80,6 @@ function startPrimary(workers: number): void {
       `${new Date().toISOString()} INFO docuprocess.api: ${signal} recibido, cerrando workers`,
     );
 
-  server.keepAliveTimeout = 65000; // más que los 60 s del ALB
-  server.headersTimeout = 66000;   // debe ser mayor que keepAliveTimeout
     for (const worker of Object.values(cluster.workers ?? {})) {
       worker?.kill('SIGTERM');
     }
@@ -114,8 +108,6 @@ try {
       `${new Date().toISOString()} ERROR docuprocess.api: configuracion invalida: ${error.message}`,
     );
 
-  server.keepAliveTimeout = 65000; // más que los 60 s del ALB
-  server.headersTimeout = 66000;   // debe ser mayor que keepAliveTimeout
     process.exit(1);
   }
   throw error;
