@@ -259,3 +259,14 @@ variable "force_destroy_buckets" {
   type        = bool
   default     = true
 }
+
+variable "docs_lifecycle_expiration_days" {
+  description = "Días para expirar objetos bajo uploads/ en el bucket de documentos. 0 desactiva la regla."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.docs_lifecycle_expiration_days >= 0
+    error_message = "docs_lifecycle_expiration_days debe ser 0 o un número positivo."
+  }
+}

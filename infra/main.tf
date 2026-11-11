@@ -71,12 +71,13 @@ module "network" {
 module "storage" {
   source = "./modules/storage"
 
-  name_prefix           = local.name_prefix
-  aws_region            = var.aws_region
-  force_destroy_buckets = var.force_destroy_buckets
-  cors_allowed_origins  = var.cors_allowed_origins
-  app_role_arn          = local.app_role_arn
-  common_tags           = local.common_tags
+  name_prefix                    = local.name_prefix
+  aws_region                     = var.aws_region
+  force_destroy_buckets          = var.force_destroy_buckets
+  cors_allowed_origins           = var.cors_allowed_origins
+  app_role_arn                   = local.app_role_arn
+  common_tags                    = local.common_tags
+  docs_lifecycle_expiration_days = var.docs_lifecycle_expiration_days
 }
 
 # --- dynamodb (B3)
