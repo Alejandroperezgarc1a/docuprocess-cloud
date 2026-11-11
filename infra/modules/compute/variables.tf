@@ -68,3 +68,9 @@ variable "health_check_path" {
   type        = string
   default     = "/api/health"
 }
+
+variable "cpu_target_value" {
+  description = "Objetivo de CPU promedio (%) del target tracking (A7)."
+  type        = number
+  default     = 60
+}
