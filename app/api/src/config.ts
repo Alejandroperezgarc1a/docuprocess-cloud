@@ -2,6 +2,9 @@
 export interface Config {
   docsBucket: string;
   ddbTable: string;
+  ddbEventsTable: string;
+  /** When false, state and audit event are written sequentially (Sandbox fallback). */
+  ddbTransactions: boolean;
   dbHost: string;
   dbPort: number;
   dbName: string;
@@ -16,6 +19,7 @@ export interface Config {
 const REQUIRED_ENV = [
   'DOCS_BUCKET',
   'DDB_TABLE',
+  'DDB_EVENTS_TABLE',
   'DB_HOST',
   'DB_NAME',
   'DB_USER',
@@ -72,6 +76,11 @@ export function loadConfig(
     throw new ConfigError('DB_PORT debe estar entre 1 y 65535');
   }
 
+  const transactionsRaw = (env.DDB_TRANSACTIONS ?? 'true').trim().toLowerCase();
+  if (transactionsRaw !== 'true' && transactionsRaw !== 'false') {
+    throw new ConfigError('DDB_TRANSACTIONS debe ser true o false');
+  }
+
   const ddbEndpointUrl = (env.DDB_ENDPOINT_URL ?? '').trim() || undefined;
   const corsAllowedOrigins = (env.CORS_ALLOWED_ORIGINS ?? '')
     .split(',')
@@ -81,6 +90,8 @@ export function loadConfig(
   return {
     docsBucket: (values.DOCS_BUCKET ?? '').trim(),
     ddbTable: (values.DDB_TABLE ?? '').trim(),
+    ddbEventsTable: (values.DDB_EVENTS_TABLE ?? '').trim(),
+    ddbTransactions: transactionsRaw === 'true',
     dbHost: (values.DB_HOST ?? '').trim(),
     dbPort,
     dbName: (values.DB_NAME ?? '').trim(),

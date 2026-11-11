@@ -6,12 +6,14 @@ import type { AwsService } from '../../src/aws.js';
 import type { Config } from '../../src/config.js';
 import type { Db, UserRecord } from '../../src/db.js';
 import { EmailAlreadyExists } from '../../src/db.js';
-import type { DocumentItem } from '../../src/types.js';
+import type { DocumentEvent, DocumentItem } from '../../src/types.js';
 
 export function testConfig(overrides: Partial<Config> = {}): Config {
   return {
     docsBucket: 'test-docs-bucket',
     ddbTable: 'documents',
+    ddbEventsTable: 'document_events',
+    ddbTransactions: true,
     dbHost: '127.0.0.1',
     dbPort: 3306,
     dbName: 'docuprocess',
@@ -81,11 +83,13 @@ export class FakeDb implements Db {
 
 export class FakeAws implements AwsService {
   readonly documents = new Map<string, DocumentItem>();
+  readonly events: DocumentEvent[] = [];
   failHealth = false;
   failPut = false;
   failPresign = false;
   failQuery = false;
   failGet = false;
+  failEventsQuery = false;
 
   async healthCheck(): Promise<void> {
     if (this.failHealth) {
@@ -93,11 +97,12 @@ export class FakeAws implements AwsService {
     }
   }
 
-  async putDocument(item: DocumentItem): Promise<void> {
+  async createDocument(item: DocumentItem, event: DocumentEvent): Promise<void> {
     if (this.failPut) {
       throw new Error('DynamoDB apagado');
     }
     this.documents.set(item.documentId, structuredClone(item));
+    this.events.push(structuredClone(event));
   }
 
   async queryUserDocuments(userId: string): Promise<DocumentItem[]> {
@@ -117,6 +122,17 @@ export class FakeAws implements AwsService {
     }
     const item = this.documents.get(documentId);
     return item === undefined ? undefined : structuredClone(item);
+  }
+
+  async queryDocumentEvents(documentId: string): Promise<DocumentEvent[]> {
+    if (this.failEventsQuery) {
+      throw new Error('DynamoDB apagado');
+    }
+    return this.events
+      .filter((event) => event.documentId === documentId)
+      .sort((left, right) => left.eventAt.localeCompare(right.eventAt))
+      .slice(0, 200)
+      .map((event) => structuredClone(event));
   }
 
   async presignUpload(key: string, contentType: string): Promise<string> {

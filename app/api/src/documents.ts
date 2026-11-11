@@ -5,7 +5,7 @@ import type { AwsService } from './aws.js';
 import type { Config } from './config.js';
 import { errorResponse } from './errors.js';
 import { readJsonBody } from './request.js';
-import type { DocumentItem } from './types.js';
+import type { DocumentEvent, DocumentItem } from './types.js';
 
 const ALLOWED_CONTENT_TYPES = new Set([
   'application/pdf',
@@ -134,10 +134,23 @@ export function registerDocumentRoutes(
       updatedAt: timestamp,
     };
 
+    // Evento inicial de la bitácora. actor=api y fromStatus ausente (no hay estado anterior).
+    // eventAt lleva un sufijo aleatorio para que dos eventos del mismo milisegundo no colisionen.
+    const event: DocumentEvent = {
+      documentId,
+      eventAt: `${timestamp}#${randomUUID().slice(0, 6)}`,
+      eventId: randomUUID(),
+      userId,
+      eventDay: timestamp.slice(0, 10),
+      toStatus: 'PENDING',
+      actor: 'api',
+      schemaVersion: 1,
+    };
+
     let uploadUrl: string;
     try {
       uploadUrl = await aws.presignUpload(key, contentType);
-      await aws.putDocument(item);
+      await aws.createDocument(item, event);
     } catch (error) {
       console.error(
         `${new Date().toISOString()} ERROR docuprocess.api: no se pudo preparar el documento en AWS:`,
@@ -221,5 +234,65 @@ export function registerDocumentRoutes(
     }
 
     res.status(200).json(item);
+  });
+
+  // Bitácora auditable del documento. Se lee de document_events (append-only), no del ítem
+  // documents: así el historial no se puede reescribir y sobrevive a cambios de estado.
+  app.get('/api/documents/:documentId/events', auth, async (req, res) => {
+    const userId = req.userId;
+    if (userId === undefined) {
+      errorResponse(res, 'unauthorized', 'Falta el token Bearer.', 401);
+      return;
+    }
+
+    const rawDocumentId = req.params.documentId;
+    const documentId = typeof rawDocumentId === 'string' ? rawDocumentId : '';
+    if (!UUID_RE.test(documentId)) {
+      errorResponse(res, 'not_found', 'Documento no encontrado.', 404);
+      return;
+    }
+
+    // Primero se comprueba la propiedad del documento: un usuario no puede leer la bitácora
+    // de otro. Después se consulta la tabla de eventos.
+    let item: DocumentItem | undefined;
+    try {
+      item = await aws.getDocument(documentId);
+    } catch (error) {
+      console.error(
+        `${new Date().toISOString()} ERROR docuprocess.api: no se pudo leer el documento para la bitacora:`,
+        error,
+      );
+      errorResponse(
+        res,
+        'storage_unavailable',
+        'No se pudo consultar el documento.',
+        503,
+      );
+      return;
+    }
+
+    if (item === undefined || item.userId !== userId) {
+      errorResponse(res, 'not_found', 'Documento no encontrado.', 404);
+      return;
+    }
+
+    let events: DocumentEvent[];
+    try {
+      events = await aws.queryDocumentEvents(documentId);
+    } catch (error) {
+      console.error(
+        `${new Date().toISOString()} ERROR docuprocess.api: no se pudo leer la bitacora:`,
+        error,
+      );
+      errorResponse(
+        res,
+        'storage_unavailable',
+        'No se pudo consultar la bitacora.',
+        503,
+      );
+      return;
+    }
+
+    res.status(200).json({ items: events });
   });
 }
