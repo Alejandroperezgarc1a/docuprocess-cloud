@@ -52,6 +52,38 @@ export const openApiSpec = {
         },
       },
     },
+    '/api/ready': {
+      get: {
+        tags: ['Health'],
+        summary: 'Readiness check',
+        description:
+          'Runs SELECT 1 against MySQL (network and credentials). Used by the userData at boot; the ALB uses /api/health.',
+        responses: {
+          '200': {
+            description: 'MySQL answers: the instance can serve traffic.',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'ready' },
+                    checks: { type: 'object', example: { mysql: 'ok' } },
+                  },
+                },
+              },
+            },
+          },
+          '503': {
+            description: 'MySQL does not answer.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UnhealthyResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
     '/api/auth/register': {
       post: {
         tags: ['Auth'],

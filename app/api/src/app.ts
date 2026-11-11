@@ -27,6 +27,7 @@ export interface AppDependencies {
  */
 const KNOWN_ROUTES: ReadonlyArray<{ pattern: RegExp; methods: readonly string[] }> = [
   { pattern: /^\/api\/health\/?$/, methods: ['GET'] },
+  { pattern: /^\/api\/ready\/?$/, methods: ['GET'] },
   { pattern: /^\/api\/auth\/register\/?$/, methods: ['POST'] },
   { pattern: /^\/api\/auth\/login\/?$/, methods: ['POST'] },
   { pattern: /^\/api\/documents\/?$/, methods: ['GET', 'POST'] },
@@ -186,6 +187,32 @@ function healthHandler(config: Config, db: Db, aws: AwsService): RequestHandler 
 }
 
 /**
+ * Returns the readiness handler: SELECT 1 against MySQL, which validates the
+ * network path and the credentials. The userData waits for it at boot so a new
+ * instance that cannot reach MySQL never becomes healthy (the deployment stops
+ * and the previous ASG keeps serving). The ALB keeps using the shallow
+ * /api/health so a database outage does not recycle every instance.
+ */
+function readyHandler(db: Db): RequestHandler {
+  return async (_req, res) => {
+    try {
+      await db.ping();
+      res.status(200).json({ status: 'ready', checks: { mysql: 'ok' } });
+    } catch (error) {
+      console.warn(
+        `${new Date().toISOString()} WARN docuprocess.api: ready: MySQL no responde:`,
+        error,
+      );
+      res.status(503).json({
+        error: 'not_ready',
+        message: 'MySQL no responde.',
+        checks: { mysql: 'error' },
+      });
+    }
+  };
+}
+
+/**
  * Builds the Express application with all routes, middleware and error handlers.
  * Dependencies are injectable so tests can replace MySQL and AWS.
  */
@@ -207,6 +234,7 @@ export function createApp({
   );
 
   app.get('/api/health', healthHandler(config, db, aws));
+  app.get('/api/ready', readyHandler(db));
   registerAuthRoutes(app, config, db);
   registerDocumentRoutes(app, config, aws);
 

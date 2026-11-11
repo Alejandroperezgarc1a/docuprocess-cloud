@@ -94,7 +94,16 @@ El tablero de [GitHub Projects](https://github.com/users/Alejandroperezgarc1a/pr
 
 ## Cómo desplegar
 
-En construcción (tarea A9).
+La guía completa (requisitos, credenciales del Sandbox y solución de problemas) llega con la tarea A9. El orden mínimo es:
+
+```bash
+cp infra/terraform.tfvars.example infra/terraform.tfvars   # completar alert_email, db_password y jwt_secret
+./scripts/package-app.sh                                    # genera dist/docuprocess-app.zip (Node 24 + zip)
+terraform -chdir=infra init
+terraform -chdir=infra apply
+```
+
+`package-app.sh` va **antes** de cada `apply` que deba llevar código nuevo: Terraform sube el zip con su hash en el nombre y, si cambió, reemplaza las instancias sin caída del servicio.
 
 ## Desarrollo local
 

@@ -1,36 +1,172 @@
 #!/bin/bash
-# userData MÍNIMO (A3). Plantilla de Terraform: lo que va entre $${...} lo rellena templatefile()
-# en la raíz; las variables de bash van sin llaves para que Terraform no las interprete.
+# userData de las instancias de la app (A4). Plantilla de Terraform: lo que va entre $${...} y las
+# directivas %%{ if } las resuelve templatefile() en la raíz; las variables de bash van SIN llaves
+# para que Terraform no las interprete.
 #
-# Sirve para validar el ALB, el target group y el ASG antes de que existan la API y el
-# empaquetado: escribe /etc/docuprocess.env y levanta un servidor que responde 200 en /api/health
-# por el puerto 8000. A4 reemplaza este archivo por la instalación real (Node.js 24 + artefacto).
+# Con artefacto y bucket de documentos: 1) /etc/docuprocess.env con la configuración (los secretos
+# se leen de Parameter Store, no viajan aquí); 2) Node.js 24 desde los repositorios de AL2023
+# (llegan por el gateway endpoint de S3, sin internet); 3) artefacto versionado desde S3;
+# 4) servicios systemd; 5) espera a que la API llegue a MySQL (/api/ready).
+# Sin ellos (B2 sin fusionar) levanta el servidor provisional de A3.
 set -euo pipefail
 exec > >(tee -a /var/log/docuprocess-userdata.log) 2>&1
-echo "$(date -Is) userData mínimo: inicio"
+echo "$(date -Is) userData: inicio"
 
-# --- Configuración de la app (contrato de docs/architecture.md, sección 3).
-# Los secretos (DB_PASSWORD, JWT_SECRET) no van aquí: A4 los lee de Parameter Store al arrancar.
+APP_DIR=/opt/docuprocess
+
+%{ if artifact_key != "" && docs_bucket != "" ~}
+# Versiones de los secretos en Parameter Store: db_password v${db_password_version}, jwt_secret v${jwt_secret_version}.
+# Si un secreto cambia, cambia su versión, cambia este texto y sale una versión nueva del launch
+# template: las instancias se reemplazan y leen el valor nuevo (rotación sin pasos manuales).
+REGION="${aws_region}"
+ENV_FILE=/etc/docuprocess.env
+
+# Reintenta un comando (los endpoints de la VPC pueden tardar unos segundos al arrancar).
+retry() {
+  local n=1 max=10
+  until "$@"; do
+    if [ "$n" -ge "$max" ]; then
+      echo "$(date -Is) ERROR: falló $n veces: $1 $2" >&2
+      return 1
+    fi
+    echo "$(date -Is) reintento $n/$max: $1 $2"
+    sleep $((n * 3))
+    n=$((n + 1))
+  done
+}
+
+# Lee un SecureString de Parameter Store (por el interface endpoint de SSM; descifra SSM con aws/ssm).
+get_secret() {
+  retry aws ssm get-parameter --region "$REGION" --name "$1" --with-decryption \
+    --query Parameter.Value --output text
+}
+
+# Escapa un valor para EnvironmentFile de systemd entre comillas dobles. Terraform ya valida que
+# los secretos sean ASCII imprimible sin espacios (sin saltos de línea que rompan el archivo).
+quote() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"; }
+
+# --- 1. Configuración (contrato de docs/architecture.md, sección 3)
+DB_PASSWORD="$(get_secret "${db_password_param}")"
+JWT_SECRET="$(get_secret "${jwt_secret_param}")"
+
 umask 077
-cat > /etc/docuprocess.env <<ENV
+cat > "$ENV_FILE" <<ENV
 AWS_REGION=${aws_region}
 DB_HOST=${db_host}
 DB_PORT=${db_port}
 DB_NAME=${db_name}
 DB_USER=${db_user}
+DB_PASSWORD=$(quote "$DB_PASSWORD")
+JWT_SECRET=$(quote "$JWT_SECRET")
 DDB_TABLE=${ddb_table}
 DOCS_BUCKET=${docs_bucket}
 SNS_TOPIC_ARN=${sns_topic_arn}
 ARTIFACTS_BUCKET=${artifacts_bucket}
 ENV
-chown root:root /etc/docuprocess.env
-chmod 600 /etc/docuprocess.env
+unset DB_PASSWORD JWT_SECRET
+chown root:root "$ENV_FILE"
+chmod 600 "$ENV_FILE"
 umask 022
+echo "$(date -Is) $ENV_FILE escrito"
 
-# --- Servidor provisional: un archivo estático en /api/health servido por python3 (viene en la AMI,
-# no necesita internet). Responde 200 como lo hará el health check superficial de la API real.
-mkdir -p /opt/docuprocess/placeholder/api
-echo '{"status":"ok","placeholder":true}' > /opt/docuprocess/placeholder/api/health
+# --- 2. Node.js 24 (paquete de AL2023; el repositorio vive en S3 y llega por el gateway endpoint)
+retry dnf install -y -q nodejs24
+NODE_BIN="$(command -v node)"
+echo "$(date -Is) Node $("$NODE_BIN" --version) en $NODE_BIN"
+
+# --- 3. Artefacto versionado por hash (lo sube Terraform; la bucket policy de B2 da GetObject al rol)
+retry aws s3 cp --region "$REGION" --only-show-errors \
+  "s3://${artifacts_bucket}/${artifact_key}" /tmp/docuprocess-app.zip
+rm -rf "$APP_DIR"
+mkdir -p "$APP_DIR"
+python3 -m zipfile -e /tmp/docuprocess-app.zip "$APP_DIR"
+rm -f /tmp/docuprocess-app.zip
+echo "${artifact_key}" > "$APP_DIR/RELEASE"
+echo "$(date -Is) artefacto ${artifact_key} en $APP_DIR"
+
+# --- 4. Servicios systemd (corren como usuario sin privilegios; logs a journald)
+id docuprocess >/dev/null 2>&1 || useradd --system --no-create-home --shell /sbin/nologin docuprocess
+
+write_unit() { # write_unit <nombre> <descripción> <archivo de entrada> [Environment extra]
+  local extra_env=""
+  if [ -n "$${4:-}" ]; then extra_env="Environment=$4"; fi
+  cat > "/etc/systemd/system/docuprocess-$1.service" <<UNIT
+[Unit]
+Description=DocuProcess - $2
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=docuprocess
+Group=docuprocess
+WorkingDirectory=$APP_DIR/$1
+EnvironmentFile=$ENV_FILE
+Environment=NODE_ENV=production
+$extra_env
+ExecStart=$NODE_BIN $APP_DIR/$1/$3
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+}
+
+SERVICES=()
+write_unit api "API REST" dist/server.js "WEB_CONCURRENCY=2 PORT=8000"
+SERVICES+=(docuprocess-api.service)
+if [ -f "$APP_DIR/worker/package.json" ]; then
+  # Entrada del worker (B5): el campo "main" de su package.json o, si no lo define, dist/worker.js.
+  WORKER_MAIN="$("$NODE_BIN" -p "require('$APP_DIR/worker/package.json').main || 'dist/worker.js'")"
+  write_unit worker "worker de procesamiento" "$WORKER_MAIN"
+  SERVICES+=(docuprocess-worker.service)
+else
+  echo "$(date -Is) el artefacto no trae worker: solo la API"
+fi
+
+systemctl daemon-reload
+
+# --- 5. Readiness ANTES de abrir el puerto 8000: la instancia solo puede quedar sana si la API llega
+# a MySQL con sus credenciales. Se levanta una API temporal en el 8001 (el ALB no la ve) con el mismo
+# usuario y el mismo EnvironmentFile, y se espera GET /api/ready. Solo si responde 200 se arrancan los
+# servicios reales (8000). Si no, nunca se arrancan: el target no pasa a healthy, Terraform no da por
+# creado el ASG nuevo y el anterior sigue atendiendo. El ALB usa /api/health (superficial) para que
+# una caída de RDS en producción no recicle todas las instancias.
+# Plazo: 180 s (dentro de los 300 s de gracia del ASG). Cada intento espera hasta 15 s porque un
+# MySQL inalcanzable tarda ~10 s en dar ETIMEDOUT.
+systemd-run --unit=docuprocess-readiness --quiet \
+  -p User=docuprocess -p EnvironmentFile="$ENV_FILE" -p WorkingDirectory="$APP_DIR/api" \
+  -E NODE_ENV=production -E PORT=8001 -E WEB_CONCURRENCY=1 \
+  "$NODE_BIN" "$APP_DIR/api/dist/server.js"
+ready=false
+deadline=$((SECONDS + 180))
+while [ "$SECONDS" -lt "$deadline" ]; do
+  if curl -fsS -m 15 http://127.0.0.1:8001/api/ready >/dev/null 2>&1; then
+    ready=true
+    break
+  fi
+  sleep 5
+done
+journalctl -u docuprocess-readiness --no-pager -o cat | grep -E "ready|WARN|ERROR" | tail -5 || true
+systemctl stop docuprocess-readiness || true
+
+if [ "$ready" != true ]; then
+  echo "$(date -Is) ERROR: /api/ready no respondió 200 en 180 s (¿RDS, SG o contraseña?)." >&2
+  echo "$(date -Is) Los servicios NO se arrancan: la instancia no recibirá tráfico." >&2
+  exit 1
+fi
+
+systemctl enable --now "$${SERVICES[@]}"
+echo "$(date -Is) userData: listo, API lista con MySQL ($${SERVICES[*]})"
+%{ else ~}
+# --- Sin artefacto o sin bucket de documentos (B2 sin fusionar): servidor provisional de A3,
+# 200 en /api/health por el puerto 8000. No lee secretos: no los necesita.
+mkdir -p "$APP_DIR/placeholder/api"
+echo '{"status":"ok","placeholder":true}' > "$APP_DIR/placeholder/api/health"
 
 cat > /etc/systemd/system/docuprocess-placeholder.service <<'UNIT'
 [Unit]
@@ -49,4 +185,5 @@ UNIT
 
 systemctl daemon-reload
 systemctl enable --now docuprocess-placeholder.service
-echo "$(date -Is) userData mínimo: listo (puerto 8000)"
+echo "$(date -Is) userData: listo (provisional, sin artefacto)"
+%{ endif ~}
