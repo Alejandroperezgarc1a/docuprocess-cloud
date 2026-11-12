@@ -1,6 +1,6 @@
 # DocuProcess Cloud
 
-DocuProcess Cloud es un SaaS que procesa de forma asíncrona los documentos e imágenes que suben sus usuarios. El usuario sube el archivo directamente a S3 mediante una URL prefirmada; un worker lo toma de una cola lógica en DynamoDB, extrae sus metadatos (tamaño, tipo MIME, SHA-256, número de páginas o dimensiones) y avisa por SNS cuando termina. La plataforma se despliega en AWS (us-east-1) con Terraform dentro del Sandbox de AWS Academy, respetando sus restricciones: sin IAM propio, sin Lambda, con instancias y bases de datos pequeñas y con credenciales temporales.
+DocuProcess Cloud es un SaaS que procesa de forma asíncrona los documentos e imágenes que suben sus usuarios. El usuario sube el archivo directamente a S3 mediante una URL prefirmada; un worker lo toma de una cola lógica en DynamoDB, extrae sus metadatos (tamaño, tipo MIME, SHA-256, número de páginas o dimensiones), registra cada cambio de estado en una bitácora auditable y avisa por SNS cuando termina. La plataforma se despliega en AWS (us-east-1) con Terraform dentro del Sandbox de AWS Academy, respetando sus restricciones: sin IAM propio, sin Lambda, con instancias y bases de datos pequeñas y con credenciales temporales.
 
 Proyecto final del curso Infraestructura III, Universidad ICESI.
 
@@ -33,7 +33,7 @@ flowchart LR
         s3front[("S3 frontend")]
         s3docs[("S3 documentos")]
         s3art[("S3 artefactos")]
-        ddb[("DynamoDB documents")]
+        ddb[("DynamoDB documents + document_events")]
         sns["SNS alertas"]
         cw["CloudWatch alarmas"]
         trail["CloudTrail"]
@@ -78,7 +78,7 @@ app/api/            API REST en Node.js + TypeScript (src/, tests/)
 app/worker/         worker de procesamiento asíncrono (pendiente, Node.js)
 frontend/           sitio estático
 scripts/            userData, empaquetado, publicación del frontend y prueba de carga
-docs/               arquitectura, RDS vs. DynamoDB y guía de despliegue
+docs/               arquitectura, RDS vs. DynamoDB, trazabilidad y guía de despliegue
 ```
 
 ## Equipo y responsabilidades
@@ -113,7 +113,7 @@ terraform -chdir=infra apply
 cp .env.example .env          # completar DB_PASSWORD, MYSQL_ROOT_PASSWORD, JWT_SECRET y DOCS_BUCKET
 docker compose up -d
 
-# Crear la tabla documents con el comando de docs/architecture.md, sección 13.
+# Crear las tablas documents y document_events con los comandos de docs/architecture.md, sección 13.
 
 cd app/api
 npm ci

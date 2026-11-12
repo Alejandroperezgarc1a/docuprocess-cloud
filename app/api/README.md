@@ -35,9 +35,10 @@ export AWS_SECRET_ACCESS_KEY=...
 export AWS_SESSION_TOKEN=...
 ```
 
-Obligatorias: `DOCS_BUCKET`, `DDB_TABLE`, `DB_HOST`, `DB_NAME`, `DB_USER`,
-`DB_PASSWORD`, `JWT_SECRET`, `AWS_REGION`.
-Opcionales: `DB_PORT` (3306), `DDB_ENDPOINT_URL`, `CORS_ALLOWED_ORIGINS`.
+Obligatorias: `DOCS_BUCKET`, `DDB_TABLE`, `DDB_EVENTS_TABLE`, `DB_HOST`, `DB_NAME`,
+`DB_USER`, `DB_PASSWORD`, `JWT_SECRET`, `AWS_REGION`.
+Opcionales: `DB_PORT` (3306), `DDB_TRANSACTIONS` (`true`), `DDB_ENDPOINT_URL`,
+`CORS_ALLOWED_ORIGINS`.
 
 La API falla al arrancar si falta una obligatoria o si `JWT_SECRET` tiene menos de
 32 caracteres. El esquema de MySQL se intenta aplicar al arrancar, pero un MySQL
@@ -46,7 +47,8 @@ reintenta en el primer registro/login.
 
 ## DynamoDB Local
 
-La API consume la tabla `documents` (no la crea). Crear la tabla con el comando de
+La API consume dos tablas (no las crea): `documents` (estado y cola) y
+`document_events` (bitácora append-only). Crear ambas con los comandos de
 `docs/architecture.md`, sección 13:
 
 ```bash
@@ -61,6 +63,18 @@ aws dynamodb create-table --endpoint-url http://localhost:8001 --region us-east-
   --global-secondary-indexes \
     '[{"IndexName":"userId-createdAt","KeySchema":[{"AttributeName":"userId","KeyType":"HASH"},{"AttributeName":"createdAt","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}},
       {"IndexName":"status-createdAt","KeySchema":[{"AttributeName":"status","KeyType":"HASH"},{"AttributeName":"createdAt","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}}]'
+
+# Bitacora de cambios de estado (append-only)
+AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local \
+aws dynamodb create-table --endpoint-url http://localhost:8001 --region us-east-1 \
+  --table-name document_events --billing-mode PAY_PER_REQUEST \
+  --attribute-definitions \
+      AttributeName=documentId,AttributeType=S AttributeName=eventAt,AttributeType=S \
+      AttributeName=userId,AttributeType=S AttributeName=eventDay,AttributeType=S \
+  --key-schema AttributeName=documentId,KeyType=HASH AttributeName=eventAt,KeyType=RANGE \
+  --global-secondary-indexes \
+    '[{"IndexName":"userId-eventAt","KeySchema":[{"AttributeName":"userId","KeyType":"HASH"},{"AttributeName":"eventAt","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}},
+      {"IndexName":"day-eventAt","KeySchema":[{"AttributeName":"eventDay","KeyType":"HASH"},{"AttributeName":"eventAt","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}}]'
 ```
 
 ## Ejecutar
@@ -131,6 +145,10 @@ TOKEN=$(curl -s -X POST localhost:8000/api/auth/login \
 curl -s -X POST localhost:8000/api/documents \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"filename":"demo.pdf","contentType":"application/pdf","size":12345}'
+
+# bitacora del documento (sustituir DOCUMENT_ID)
+curl -s localhost:8000/api/documents/DOCUMENT_ID/events \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Empaquetado para A4

@@ -239,9 +239,30 @@ variable "cors_allowed_origins" {
 }
 
 variable "dynamodb_table_name" {
-  description = "Nombre de la tabla de documentos."
+  description = "Nombre de la tabla de documentos (estado y cola del worker)."
   type        = string
   default     = "documents"
+}
+
+variable "document_events_table_name" {
+  description = "Nombre de la tabla de eventos (bitácora append-only de cambios de estado)."
+  type        = string
+  default     = "document_events"
+}
+
+variable "enable_dynamodb_transactions" {
+  description = "Escribe estado y evento en una transacción. Poner en false solo si el Sandbox deniega las escrituras transaccionales."
+  type        = bool
+  default     = true
+}
+
+# El default del Sandbox es true, pero puede denegar Point-in-time recovery (PITR).
+# PITR permite restaurar a un segundo exacto de los últimos 35 días; si la SCP lo
+# deniega, poner en false en terraform.tfvars y el módulo lo desactiva sin más cambios.
+variable "enable_point_in_time_recovery" {
+  description = "Activa point-in-time recovery en las tablas DynamoDB. Poner en false si el Sandbox lo deniega."
+  type        = bool
+  default     = true
 }
 
 variable "alert_email" {
