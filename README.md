@@ -97,10 +97,9 @@ El tablero de [GitHub Projects](https://github.com/users/Alejandroperezgarc1a/pr
 | 1 | Mié 4 – Vie 6 | Fundaciones | C1, C2, A1, B1 (spike), C5, A2, B4 |
 | 2 | Lun 9 – Mié 11 | Datos y cómputo | B2, B3, A5, A3, B8, B6 |
 | 3 | Jue 12 – Vie 13 | Notificaciones, CDN y monitoreo | B5 (cierre), A4, B7, B10 |
-| 4 | Sáb 14 – Mar 17 | Integración y cierre | B9, C3, A8, A9, B1 (documentación), C4 |
-| Buffer | Mié 18 | Colchón | — |
+| 4 | Jue 12 – Vie 13 | Integración y cierre | B9, C3, A8, A9, B1 (documentación), C4 |
 
-La semana del 2 al 6 de noviembre queda limitada a las fundaciones. B2, B3, B6, B5, B7, B8, A3, A4 y A5 se movieron a la semana del 9 para no concentrar tareas. El cierre técnico estimado es el **mar 17 de noviembre** y el **mié 18** queda como buffer.
+La semana del 2 al 6 de noviembre queda limitada a las fundaciones. B2, B3, B6, B5, B7, B8, A3, A4 y A5 se movieron a la semana del 9 para no concentrar tareas. El cierre técnico estimado es el **viernes 13 de noviembre**.
 
 ## Cómo desplegar
 
