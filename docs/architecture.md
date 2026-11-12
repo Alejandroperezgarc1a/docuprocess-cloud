@@ -18,12 +18,13 @@
 | Elemento | Valor |
 | --- | --- |
 | Código | `/opt/docuprocess/{api,worker}` |
-| Entorno de ejecución | `/opt/docuprocess/api/dist` + `/opt/docuprocess/api/node_modules` (vendorizado) |
+| Entorno de ejecución | `/opt/docuprocess/{api,worker}/dist` + `node_modules` vendorizado |
 | Configuración | `/etc/docuprocess.env` (permisos 600, dueño root) |
 | Unidades systemd | `docuprocess-api.service`, `docuprocess-worker.service` (`EnvironmentFile=/etc/docuprocess.env`, `Restart=always`) |
 | Arranque de la API | `node /opt/docuprocess/api/dist/server.js` con `WEB_CONCURRENCY=2` |
+| Arranque del worker | `node /opt/docuprocess/worker/dist/worker.js` (un proceso por instancia) |
 | Usuario del sistema | `docuprocess` |
-| Logs | stdout/stderr → journald (`journalctl -u docuprocess-api`) |
+| Logs | stdout/stderr → journald (`journalctl -u docuprocess-api`, `journalctl -u docuprocess-worker`) |
 | Log del arranque | `/var/log/docuprocess-userdata.log` |
 
 ### 3. Variables de entorno
@@ -31,7 +32,9 @@
 | Variable | Origen en AWS | Usa | Local (`.env`) |
 | --- | --- | --- | --- |
 | `DOCS_BUCKET` | `module.storage.docs_bucket_name` | API, worker | bucket real (obligatorio para la API) |
-| `DDB_TABLE` | `module.dynamodb.table_name` | API, worker | `documents` |
+| `DDB_TABLE` | `var.dynamodb_table_name` (B3 lo cablea al módulo) | API, worker | `documents` |
+| `DDB_EVENTS_TABLE` | `var.ddb_events_table` (B3) | worker | `document_events` |
+| `DDB_TRANSACTIONS` | `var.ddb_transactions` (B3) | API, worker | `true` |
 | `SNS_TOPIC_ARN` | `module.sns.topic_arn` | worker | vacío (solo log) |
 | `DB_HOST` | `module.rds.db_address` | API | `127.0.0.1` |
 | `DB_PORT` | `module.rds.db_port` (opcional, 3306) | API | `3306` |
@@ -43,7 +46,11 @@
 | `ARTIFACTS_BUCKET` | `module.storage.artifacts_bucket_name` | userData | vacío |
 | `DDB_ENDPOINT_URL` | **no se define** | API, worker | `http://localhost:8001` |
 | `CORS_ALLOWED_ORIGINS` | **no se define** (mismo origen vía CloudFront) | API | `http://localhost:5500` |
-| `WORKER_POLL_SECONDS` | opcional (5) | worker | `5` |
+| `WORKER_POLL_SECONDS` | `var.worker_poll_seconds` (5) | worker | `5` |
+| `WORKER_BATCH_SIZE` | `var.worker_batch_size` (10) | worker | `10` |
+| `UPLOAD_TIMEOUT_MINUTES` | `var.upload_timeout_minutes` (15) | worker | `15` |
+| `MAX_FILE_MB` | `var.max_file_mb` (10) | worker | `10` |
+| `LOG_LEVEL` | fijo `INFO` en AWS | worker | `INFO` |
 
 Reglas:
 - La aplicación **falla al arrancar** si falta una variable obligatoria (configuración por entorno, al estilo 12-factor).
@@ -80,6 +87,31 @@ PENDING ──(worker reclama con update condicional)──► PROCESSING ──
 
 `status` es palabra reservada de DynamoDB: siempre va en `ExpressionAttributeNames` (`#s`).
 
+### 4.1 Bitácora `document_events`
+
+Tabla append-only para auditoría y para reconstruir el historial de un documento. La API registra
+la creación; el worker registra cada transición que ejecuta.
+
+| Atributo | Tipo | Descripción |
+| --- | --- | --- |
+| `documentId` | S (PK) | Documento al que pertenece el evento |
+| `eventAt` | S (SK) | `ISO-8601 UTC con ms + "#" + 6 hex`; ordena cronológicamente y evita colisiones en el mismo milisegundo |
+| `eventId` | S | UUID del evento |
+| `userId` | S | Dueño del documento |
+| `eventDay` | S | `YYYY-MM-DD`, para consultas por día |
+| `fromStatus` | S | Estado anterior; ausente en la creación |
+| `toStatus` | S | Estado nuevo |
+| `actor` | S | `api`, `worker` o `system` |
+| `reason` | S | Motivo legible (opcional) |
+| `error` | S | Error de una transición a `FAILED` (opcional) |
+| `requestId` | S | Correlación con la request de la API (opcional) |
+| `schemaVersion` | N | `1` |
+
+El worker escribe `PENDING→PROCESSING`, `PROCESSING→DONE`, `PROCESSING→FAILED` y
+`PENDING→FAILED` (timeout de subida) con `actor="worker"`. Si `DDB_TRANSACTIONS=true`, el
+`Update` del documento y el `Put` del evento van en un `TransactWriteItems`; si es `false`, se
+escriben secuencialmente como respaldo del Sandbox.
+
 ### 5. Clave en S3
 
 `uploads/{userId}/{documentId}/{filename}`. El nombre se sanea: sin `/`, sin `\`, sin caracteres de control y con un máximo de 200 caracteres. El `documentId` en la ruta evita colisiones entre archivos con el mismo nombre.
@@ -108,7 +140,7 @@ Formato de error: `{"error": "<codigo>", "message": "<texto legible>"}`.
 
 ### 8. Archivos permitidos
 
-`application/pdf`, `image/png`, `image/jpeg` y `text/plain`, con un máximo de **10 MB**. Lo valida el frontend (B7), la API sobre lo declarado (A6) y el worker sobre el archivo real (B6). Una URL prefirmada de tipo PUT no puede imponer el tamaño, por eso el worker es la última barrera.
+`application/pdf`, `image/png`, `image/jpeg` y `text/plain`, con un máximo de **10 MB**. Lo valida el frontend (B7), la API sobre lo declarado (A6) y el worker sobre el archivo real (B5). Una URL prefirmada de tipo PUT no puede imponer el tamaño, por eso el worker es la última barrera. El worker detecta el MIME por magic bytes (`file-type`) y, si no hay firma conocida, acepta UTF-8 válido como `text/plain`; rechaza el resto.
 
 ### 9. Notificación SNS (worker)
 
@@ -146,6 +178,8 @@ El rol de las instancias (`AmazonSSMRoleForInstancesQuickSetup`) **solo tiene pe
 | Bucket de documentos | bucket policy | `s3:GetObject` y `s3:PutObject` sobre `uploads/*` |
 | Bucket de artefactos | bucket policy | `s3:GetObject` sobre `releases/*` |
 | Tabla `documents` e índices | DynamoDB resource policy | `GetItem`, `PutItem`, `UpdateItem` y `Query` |
+| Tabla `document_events` | DynamoDB resource policy (B3) | `PutItem` y `Query` (append-only; sin `UpdateItem` ni `DeleteItem`) |
+| Transacciones DynamoDB | DynamoDB resource policy (B3) | `TransactWriteItems` cuando `DDB_TRANSACTIONS=true` |
 | Tópico de alertas | topic policy | `sns:Publish` (y `sns:Publish` para `cloudwatch.amazonaws.com`, por las alarmas) |
 | Parámetros `/<name_prefix>/*` | ya cubierto por el rol (`ssm:*` sobre parámetros) | `ssm:GetParameter` |
 
@@ -181,6 +215,17 @@ aws dynamodb create-table --endpoint-url http://localhost:8001 --region us-east-
   --global-secondary-indexes \
     '[{"IndexName":"userId-createdAt","KeySchema":[{"AttributeName":"userId","KeyType":"HASH"},{"AttributeName":"createdAt","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}},
       {"IndexName":"status-createdAt","KeySchema":[{"AttributeName":"status","KeyType":"HASH"},{"AttributeName":"createdAt","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}}]'
+
+# Bitácora append-only de eventos (la API escribe la creación; el worker las transiciones)
+AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local \
+aws dynamodb create-table --endpoint-url http://localhost:8001 --region us-east-1 \
+  --table-name document_events --billing-mode PAY_PER_REQUEST \
+  --attribute-definitions \
+      AttributeName=documentId,AttributeType=S AttributeName=eventAt,AttributeType=S \
+  --key-schema AttributeName=documentId,KeyType=HASH AttributeName=eventAt,KeyType=RANGE
+
+# Worker en local (DynamoDB Local + bucket real; SNS vacío escribe en el log)
+cd app/worker && npm ci && npm run build && node dist/worker.js
 
 docker compose down             # detener (DynamoDB Local es en memoria: la tabla se pierde)
 docker compose down -v          # además borrar los datos de MySQL

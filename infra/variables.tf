@@ -244,6 +244,62 @@ variable "dynamodb_table_name" {
   default     = "documents"
 }
 
+variable "ddb_events_table" {
+  description = "Nombre de la tabla append-only de eventos (B3). El worker escribe las transiciones."
+  type        = string
+  default     = "document_events"
+}
+
+variable "ddb_transactions" {
+  description = "Usa TransactWriteItems para actualizar el documento y escribir su evento. false = fallback secuencial."
+  type        = bool
+  default     = true
+}
+
+variable "worker_poll_seconds" {
+  description = "Cada cuántos segundos el worker consulta documentos PENDING."
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.worker_poll_seconds >= 1 && var.worker_poll_seconds <= 3600
+    error_message = "worker_poll_seconds debe estar entre 1 y 3600."
+  }
+}
+
+variable "worker_batch_size" {
+  description = "Máximo de documentos que el worker procesa por ciclo."
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.worker_batch_size >= 1 && var.worker_batch_size <= 100
+    error_message = "worker_batch_size debe estar entre 1 y 100."
+  }
+}
+
+variable "upload_timeout_minutes" {
+  description = "Minutos tras los cuales un PENDING sin archivo se marca FAILED (upload timeout)."
+  type        = number
+  default     = 15
+
+  validation {
+    condition     = var.upload_timeout_minutes >= 1 && var.upload_timeout_minutes <= 1440
+    error_message = "upload_timeout_minutes debe estar entre 1 y 1440."
+  }
+}
+
+variable "max_file_mb" {
+  description = "Tamaño máximo real del archivo que acepta el worker."
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.max_file_mb >= 1 && var.max_file_mb <= 100
+    error_message = "max_file_mb debe estar entre 1 y 100."
+  }
+}
+
 variable "alert_email" {
   description = "Correo que recibe las notificaciones de SNS (documentos y alarmas)."
   type        = string

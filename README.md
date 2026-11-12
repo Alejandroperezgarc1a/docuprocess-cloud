@@ -59,7 +59,7 @@ flowchart LR
 ## Stack
 
 - **Infraestructura:** Terraform y AWS (VPC, ALB, EC2 Auto Scaling, RDS MySQL, S3, DynamoDB, SNS, CloudFront, CloudWatch y CloudTrail).
-- **Backend:** Node.js 24 + TypeScript (API REST con Express 5; worker de procesamiento previsto en Node.js) como servicios systemd en Amazon Linux 2023.
+- **Backend:** Node.js 24 + TypeScript (API REST con Express 5 y worker asíncrono) como servicios systemd en Amazon Linux 2023.
 - **Frontend:** HTML, CSS y JavaScript con Vite; build estático servido por CloudFront.
 - **Desarrollo local:** Docker Compose con MySQL y DynamoDB Local.
 - **Integración continua:** GitHub Actions.
@@ -69,13 +69,13 @@ flowchart LR
 - Documentación interactiva (Swagger UI): `/api/docs`
 - Especificación OpenAPI 3.0: `/api/openapi.json`
 
-## Estructura del repositorio (prevista)
+## Estructura del repositorio
 
 ```
 infra/              módulo raíz de Terraform
 infra/modules/      network, compute, rds, storage, dynamodb, sns, cdn, monitoring
 app/api/            API REST en Node.js + TypeScript (src/, tests/)
-app/worker/         worker de procesamiento asíncrono (pendiente, Node.js)
+app/worker/         worker de procesamiento asíncrono en Node.js + TypeScript
 frontend/           sitio estático
 scripts/            userData, empaquetado, publicación del frontend y prueba de carga
 docs/               arquitectura, RDS vs. DynamoDB y guía de despliegue
@@ -125,6 +125,23 @@ PORT=8000 WEB_CONCURRENCY=2 node dist/server.js
 En desarrollo con recarga automática: `npm run dev`.
 
 Swagger UI: `http://localhost:8000/api/docs`.
+
+### Worker
+
+```bash
+# Mismas variables que la API (DDB_TABLE, DDB_EVENTS_TABLE, DOCS_BUCKET, AWS_REGION).
+# DDB_ENDPOINT_URL=http://localhost:8001 apunta a DynamoDB Local; SNS_TOPIC_ARN vacío deja la
+# notificación en el log. Requiere las tablas documents y document_events (sección 13 de
+# docs/architecture.md).
+cd app/worker
+npm ci
+npm run build
+set -a; . ../../.env; set +a
+node dist/worker.js
+```
+
+Pruebas unitarias: `npm test`. Integración con DynamoDB Local y S3 real:
+`RUN_INTEGRATION=1 DOCS_BUCKET=<bucket> npm run test:integration` (requiere `npm run build`).
 
 ### Frontend
 

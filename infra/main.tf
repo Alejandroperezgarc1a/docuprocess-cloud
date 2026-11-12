@@ -155,20 +155,26 @@ locals {
   # Terraform los cree antes que el launch template. Sus versiones (no los valores) entran al
   # userData: rotar un secreto cambia la versión y reemplaza las instancias.
   user_data = templatefile("${path.module}/../scripts/user-data.sh.tftpl", {
-    aws_region          = var.aws_region
-    db_password_param   = aws_ssm_parameter.db_password.name
-    jwt_secret_param    = aws_ssm_parameter.jwt_secret.name
-    db_password_version = aws_ssm_parameter.db_password.version
-    jwt_secret_version  = aws_ssm_parameter.jwt_secret.version
-    db_host             = module.rds.db_address
-    db_port             = module.rds.db_port
-    db_name             = var.db_name
-    db_user             = var.db_username
-    ddb_table           = var.dynamodb_table_name
-    docs_bucket         = local.docs_bucket_name
-    sns_topic_arn       = local.sns_topic_arn
-    artifacts_bucket    = local.artifacts_bucket_name
-    artifact_key        = aws_s3_object.app_artifact.key
+    aws_region             = var.aws_region
+    db_password_param      = aws_ssm_parameter.db_password.name
+    jwt_secret_param       = aws_ssm_parameter.jwt_secret.name
+    db_password_version    = aws_ssm_parameter.db_password.version
+    jwt_secret_version     = aws_ssm_parameter.jwt_secret.version
+    db_host                = module.rds.db_address
+    db_port                = module.rds.db_port
+    db_name                = var.db_name
+    db_user                = var.db_username
+    ddb_table              = var.dynamodb_table_name
+    ddb_events_table       = var.ddb_events_table
+    ddb_transactions       = var.ddb_transactions
+    docs_bucket            = local.docs_bucket_name
+    sns_topic_arn          = local.sns_topic_arn
+    artifacts_bucket       = local.artifacts_bucket_name
+    artifact_key           = aws_s3_object.app_artifact.key
+    worker_poll_seconds    = var.worker_poll_seconds
+    worker_batch_size      = var.worker_batch_size
+    upload_timeout_minutes = var.upload_timeout_minutes
+    max_file_mb            = var.max_file_mb
   })
 }
 
