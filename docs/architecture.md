@@ -88,7 +88,8 @@ PENDING ──(worker reclama con update condicional)──► PROCESSING ──
 
 `documents` guarda el **estado actual** (se sobrescribe). El **historial** vive en una tabla
 separada, `document_events`, que es *append-only*: la política del rol solo permite `PutItem`,
-`GetItem`, `Query` y `TransactWriteItems`; no puede actualizar ni borrar eventos.
+`GetItem` y `Query`; las transacciones se autorizan con las acciones de cada ítem. No puede
+actualizar ni borrar eventos.
 
 | Atributo | Tipo | Descripción |
 | --- | --- | --- |
@@ -189,8 +190,8 @@ El rol de las instancias (`AmazonSSMRoleForInstancesQuickSetup`) **solo tiene pe
 | --- | --- | --- |
 | Bucket de documentos | bucket policy | `s3:GetObject` y `s3:PutObject` sobre `uploads/*` |
 | Bucket de artefactos | bucket policy | `s3:GetObject` sobre `releases/*` |
-| Tabla `documents` e índices | DynamoDB resource policy | `GetItem`, `PutItem`, `UpdateItem`, `Query` y `TransactWriteItems` |
-| Tabla `document_events` e índices | DynamoDB resource policy | `GetItem`, `PutItem`, `Query` y `TransactWriteItems` (sin `UpdateItem`/`DeleteItem`: append-only) |
+| Tabla `documents` e índices | DynamoDB resource policy | `GetItem`, `PutItem`, `UpdateItem`, `Query` (las transacciones usan estas acciones) |
+| Tabla `document_events` e índices | DynamoDB resource policy | `GetItem`, `PutItem`, `Query` (sin `UpdateItem`/`DeleteItem`: append-only; las transacciones usan estas acciones) |
 | Tópico de alertas | topic policy | `sns:Publish` (y `sns:Publish` para `cloudwatch.amazonaws.com`, por las alarmas) |
 | Parámetros `/<name_prefix>/*` | ya cubierto por el rol (`ssm:*` sobre parámetros) | `ssm:GetParameter` |
 
@@ -207,7 +208,8 @@ La app **no** debe usar operaciones de listado de cuenta (`ListBuckets`, `ListTa
 | `autoscaling:StartInstanceRefresh` → *explicit deny* de una SCP (A4, 2026-11-09) | Sin `instance_refresh`: el ASG lleva la versión del launch template en el nombre y se reemplaza sin caída (`create_before_destroy` + `wait_for_elb_capacity`; no es azul/verde estricto: los dos ASG comparten el target group durante el cambio) |
 | Sin NAT no hay STS ni internet; SSM, S3, DynamoDB, SNS y `dnf` funcionan por endpoints | `enable_nat_gateway = false`; dependencias de Node.js (`node_modules`) empaquetadas en el artefacto |
 | La topic policy de SNS no acepta `sns:*`; `s3:HeadObject` no es una acción válida | Listar acciones concretas en las políticas |
-| **Contingencia (no observada aún):** una SCP podría denegar `dynamodb:TransactWriteItems` o `dynamodb:PutResourcePolicy` | `enable_dynamodb_transactions = false` escribe estado y evento por separado; sin `PutResourcePolicy` no hay forma de dar datos al rol (el Sandbox no permite crear roles) y habría que escalar el permiso |
+| `dynamodb:TransactWriteItems` no es una acción IAM válida (Sandbox, B3, 2026-11-12) | No incluirla en las políticas: DynamoDB autoriza la transacción con las acciones de cada ítem |
+| **Contingencia (no observada aún):** una SCP podría denegar las escrituras transaccionales (acciones de ítem como `PutItem`/`UpdateItem`) o `dynamodb:PutResourcePolicy` | `enable_dynamodb_transactions = false` escribe estado y evento por separado; sin `PutResourcePolicy` no hay forma de dar datos al rol (el Sandbox no permite crear roles) y habría que escalar el permiso |
 
 ### 13. Desarrollo local
 

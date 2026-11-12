@@ -41,18 +41,18 @@
 
 | Criterio de la HU | Evidencia | Estado | Última verificación |
 | --- | --- | --- | --- |
-| `terraform plan` sin errores | `terraform validate` OK; `plan` bloqueado por estado de otra cuenta y falta de `terraform.tfvars` | Pendiente (credenciales) | 2026-11-11 |
-| `apply` crea la tabla `ACTIVE` | Pendiente de credenciales de la cuenta correcta | Pendiente | 2026-11-11 |
-| `describe-table` muestra 2 GSI `ACTIVE` y `PAY_PER_REQUEST` | DynamoDB Local: `documents` y `document_events` ACTIVE, 2 GSIs ACTIVE, `PAY_PER_REQUEST`; falta AWS | Verificado (local) | 2026-11-11 |
-| `put-item` visible en `status-createdAt` con `status=PENDING` | DynamoDB Local: put-item + query devuelve el ítem PENDING | Verificado (local) | 2026-11-11 |
-| Segundo `update-item` condicional falla | DynamoDB Local: primero OK, segundo `ConditionalCheckFailedException` (exit 254) | Verificado (local) | 2026-11-11 |
-| `TransactWriteItems` documento + evento es atómico | DynamoDB Local: transacción con condición fallida cancela todo y no escribe el evento | Verificado (local) | 2026-11-11 |
+| `terraform plan` sin errores | `terraform validate` OK; `apply` de la integración #45 + #46 + #47 + #44 en el Sandbox | Verificado (Sandbox) | 2026-11-12 |
+| `apply` crea la tabla `ACTIVE` | Sandbox: tablas creadas; PITR `ENABLED` en `documents` y `document_events` | Verificado (Sandbox) | 2026-11-12 |
+| `describe-table` muestra 2 GSI `ACTIVE` y `PAY_PER_REQUEST` | DynamoDB Local: `documents` y `document_events` ACTIVE, 2 GSIs ACTIVE, `PAY_PER_REQUEST`; Sandbox: tablas operativas | Verificado (local + Sandbox) | 2026-11-12 |
+| `put-item` visible en `status-createdAt` con `status=PENDING` | DynamoDB Local: put-item + query devuelve el ítem PENDING; Sandbox: el worker tomó el documento PENDING | Verificado (local + Sandbox) | 2026-11-12 |
+| Segundo `update-item` condicional falla | DynamoDB Local: primero OK, segundo `ConditionalCheckFailedException` (exit 254); Sandbox: transiciones del worker | Verificado (local + Sandbox) | 2026-11-12 |
+| `TransactWriteItems` documento + evento es atómico | DynamoDB Local: transacción con condición fallida cancela todo; Sandbox: `POST /api/documents` 201 con `DDB_TRANSACTIONS=true` | Verificado (local + Sandbox) | 2026-11-12 |
 | Consultas por `userId-eventAt` y `day-eventAt` | DynamoDB Local: ambas devuelven el evento de prueba | Verificado (local) | 2026-11-11 |
 | Tabla `documents` con PK `documentId` y 2 GSIs | `infra/modules/dynamodb/main.tf` | Verificado (código) | 2026-11-11 |
 | Tabla `document_events` append-only con 2 GSIs | `infra/modules/dynamodb/main.tf` | Verificado (código) | 2026-11-11 |
-| Política de recurso con las acciones mínimas | `aws_dynamodb_resource_policy` en el módulo | Verificado (código) | 2026-11-11 |
-| Endpoint de bitácora y alta transaccional | `app/api/src/documents.ts`, `aws.ts`; tests | Verificado (tests) | 2026-11-11 |
-| `npm run typecheck`, `npm run build`, `npm test` | 67 pruebas en verde | Verificado | 2026-11-11 |
+| Política de recurso con las acciones mínimas | `aws_dynamodb_resource_policy` en el módulo; Sandbox: políticas creadas tras quitar `dynamodb:TransactWriteItems` | Verificado (Sandbox) | 2026-11-12 |
+| Endpoint de bitácora y alta transaccional | `app/api/src/documents.ts`, `aws.ts`; tests; Sandbox: trail `PENDING → PROCESSING → DONE` y 404 para otro usuario | Verificado (tests + Sandbox) | 2026-11-12 |
+| `npm run typecheck`, `npm run build`, `npm test` | 68 pruebas en verde | Verificado | 2026-11-12 |
 | ShellCheck del userData | `shellcheck` sobre las dos variantes renderizadas (provisional y con artefacto) | Verificado | 2026-11-11 |
 
 ## 4. Riesgos abiertos
@@ -60,9 +60,9 @@
 | Riesgo | Impacto | Mitigación |
 | --- | --- | --- |
 | SCP deniega `dynamodb:PutResourcePolicy` | El rol no puede leer/escribir las tablas | No hay plan B sin IAM propio; habría que escalar el permiso al administrador del Sandbox |
-| SCP deniega `dynamodb:TransactWriteItems` | El alta no es atómica | `enable_dynamodb_transactions = false` (escritura secuencial; deuda documentada en §12) |
+| SCP deniega las escrituras transaccionales (acciones de ítem como `PutItem`/`UpdateItem`) | El alta no es atómica | `enable_dynamodb_transactions = false` (escritura secuencial; deuda documentada en §12) |
 | Sandbox deniega `point_in_time_recovery` | Sin restauración a un segundo | `enable_point_in_time_recovery = false` |
-| El worker todavía no existe | No hay transiciones `PROCESSING/DONE/FAILED` ni historial real | B5/B6 implementan el worker; la bitácora ya tiene el contrato y el endpoint |
+| El worker aún no está fusionado en `main` | No hay transiciones `PROCESSING/DONE/FAILED` en la rama base | B5/B6 integran el worker; la bitácora ya tiene el contrato y el endpoint |
 | Fechas y horas reales de la tarea | El tablero puede quedar desactualizado | Issue #7 actualizada al cerrar (formato `YYYY-MM-DD`); el Project no es visible con el token actual |
 | Estado local de Terraform de otra cuenta (`491699813584`) | `plan/apply` falla con las credenciales actuales (`556880009270`) | Usar el estado de la cuenta correcta o `terraform state rm`/importar; nunca aplicar sobre un estado ajeno |
 | No existe `infra/terraform.tfvars` | El despliegue no es reproducible solo con el repo | Copiar `terraform.tfvars.example`, completar secretos y correo, y mantenerlo fuera de Git |

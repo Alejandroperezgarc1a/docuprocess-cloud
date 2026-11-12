@@ -115,7 +115,7 @@ Si cualquiera falla, no se escribe ninguno. El SDK devuelve `TransactionCanceled
 `CancellationReasons`; el código de la condición es `ConditionalCheckFailed` (no
 `ConditionalCheckFailedException`, que es el de un `UpdateItem` suelto).
 
-**Fallback del Sandbox:** si una SCP denegara `TransactWriteItems`, `DDB_TRANSACTIONS=false`
+**Fallback del Sandbox:** si una SCP denegara las escrituras transaccionales, `DDB_TRANSACTIONS=false`
 escribe primero el documento y después el evento. El sistema sigue funcionando, pero una caída
 entre las dos escrituras deja un documento sin su evento `PENDING`; se documenta como deuda y se
 detecta comparando el documento con su bitácora.

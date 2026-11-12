@@ -3,9 +3,9 @@
 | Campo | Valor |
 | --- | --- |
 | Rama | `feat/B3-modulo-DynamoDB` |
-| Fecha | 2026-11-11 (UTC) |
+| Fecha | 2026-11-12 (UTC) |
 | Alcance | Tablas `documents` y `document_events`, políticas de recurso, integración en la API, endpoint de bitácora, contrato y comparativa |
-| Estado | Implementado y verificado en local. `apply` en AWS pendiente por credenciales/estado de otra cuenta |
+| Estado | Implementado y verificado en local y en el Sandbox de AWS (integración #45 + #46 + #47 + #44) |
 
 ## 1. Qué se hizo
 
@@ -18,8 +18,10 @@ La HU B3 pedía la tabla `documents` (estado y cola del worker). Se implementó 
 - `document_events`: PK `documentId` + SK `eventAt`; GSI `userId-eventAt` y `day-eventAt`;
   append-only; misma configuración de capacidad, cifrado y respaldo.
 - Políticas de recurso para el rol preexistente de las instancias: la tabla de documentos permite
-  `GetItem`, `PutItem`, `UpdateItem`, `Query` y `TransactWriteItems`; la de eventos permite lo
-  mismo salvo `UpdateItem`/`DeleteItem`, de modo que la aplicación no puede reescribir el historial.
+  `GetItem`, `PutItem`, `UpdateItem` y `Query`; la de eventos permite `GetItem`, `PutItem` y
+  `Query`, de modo que la aplicación no puede reescribir el historial. Las transacciones se
+  autorizan con las acciones de cada ítem; `dynamodb:TransactWriteItems` **no** es una acción IAM
+  válida y se eliminó de ambas políticas durante la validación en AWS.
 - El alta de un documento escribe estado + evento inicial `PENDING` en una sola transacción
   (`TransactWriteItems`). Si el Sandbox deniega transacciones, `DDB_TRANSACTIONS=false` activa el
   fallback secuencial documentado.
@@ -43,8 +45,12 @@ La HU B3 pedía la tabla `documents` (estado y cola del worker). Se implementó 
 | `terraform fmt -recursive` + `init -backend=false` + `validate` | Correcto |
 | `npm run typecheck` | Correcto |
 | `npm run build` | Correcto |
-| `npm test` | 67 pruebas, 67 en verde |
+| `npm test` | 68 pruebas, 68 en verde |
 | ShellCheck del userData (dos variantes renderizadas) | Correcto |
+| AWS Sandbox: `apply` de políticas y PITR | Ambas políticas creadas; PITR `ENABLED` en `documents` y `document_events` |
+| AWS Sandbox: alta transaccional | `POST /api/documents` 201 con `DDB_TRANSACTIONS=true`; `PUT` a S3 200 |
+| AWS Sandbox: worker y bitácora | Documento `DONE` con `mimeType`, `sha256` y `sizeBytes`; eventos `PENDING → PROCESSING → DONE` en orden |
+| AWS Sandbox: aislamiento y SNS | Bitácora de otro usuario 404; log `sns_published` |
 | DynamoDB Local: `describe-table` | `documents` y `document_events` ACTIVE, `PAY_PER_REQUEST`, 2 GSIs ACTIVE cada una |
 | DynamoDB Local: `put-item` + query `status-createdAt` | Devuelve el documento PENDING |
 | DynamoDB Local: update condicional | Primero OK; segundo `ConditionalCheckFailedException` |
@@ -56,34 +62,45 @@ Detalle de la semántica de las condiciones: la clave del evento es compuesta
 evento y no limita los demás eventos del documento. La condición del documento
 (`attribute_not_exists(documentId)`) es la que impide sobrescribir un documento existente.
 
-## 4. Bloqueo para el `apply` en AWS
+## 4. Validación en AWS (2026-11-12)
 
-No se ejecutó `apply`. Las credenciales disponibles (`aws sts get-caller-identity`) pertenecen a la
-cuenta **556880009270**, pero el estado local de Terraform corresponde a la cuenta
-**491699813584**. Además:
+El `apply` se validó en el Sandbox con la integración de #45 + #46 + #47 + #44 sobre `main`. El
+primer intento falló al crear las dos políticas de recurso:
 
-- No existe `infra/terraform.tfvars` (solo el `.example`).
-- La SCP deniega `ec2:DescribeImages`.
-- El rol/instance profile `AmazonSSMRoleForInstancesQuickSetup` no existe en la cuenta actual.
+```text
+api error ValidationException: Invalid policy document:
+The following action names are invalid: "dynamodb:TransactWriteItems"
+```
 
-`terraform plan` llegó a proponer 40 recursos y falló en los `data` de AMI e instance profile.
-Aplicar sobre ese estado mezclaría recursos de dos cuentas; no se hizo.
+`TransactWriteItems` no es una acción IAM: DynamoDB autoriza la transacción con las acciones de
+cada ítem (`PutItem`, `UpdateItem`, `ConditionCheckItem`, `DeleteItem`). Se eliminó de ambas
+políticas —la API hace Put + Put y el worker Update + Put, ya permitidos— y se corrigió esta
+documentación. Con ese cambio pasó todo:
 
-**Cómo desbloquearlo:** copiar las credenciales de la cuenta correcta del Sandbox (o limpiar el
-estado local si se empieza de cero), crear `infra/terraform.tfvars` a partir del ejemplo y ejecutar
-`terraform -chdir=infra plan` antes de `apply`.
+- Ambas políticas se crearon y PITR quedó `ENABLED` en las dos tablas.
+- `register` 201, `login` 200, `POST /api/documents` 201 y `PUT` a S3 200.
+- El worker movió el documento a `DONE` en ~10 s con `mimeType`, `sha256` y `sizeBytes`.
+- `GET /api/documents/{id}/events` devolvió `- → PENDING (api)`, `PENDING → PROCESSING (worker)`
+  y `PROCESSING → DONE (worker)` en orden.
+- El mismo trail con el token de otro usuario devolvió 404.
+- El log del worker registró `sns_published` con el topic de #47.
+
+La validación se hizo sobre la integración de ramas, que es el escenario real de despliegue; no se
+repitió un `apply` aislado solo con B3.
 
 ## 5. Fechas y horas
 
-- Issue #7 (B3): fechas reales `2026-11-11 – 2026-11-11`; horas reales estimadas: **5** (la HU
-  estimaba 3; el extra corresponde al diseño de la bitácora, la comparativa y la verificación local).
-- `docs/trazabilidad.md`: columna `Última verificación` con `2026-11-11`.
+- Issue #7 (B3): trabajo local `2026-11-11`; validación en AWS `2026-11-12`. Horas reales
+  estimadas: **5** (la HU estimaba 3; el extra corresponde al diseño de la bitácora, la
+  comparativa y la verificación local).
+- `docs/trazabilidad.md`: columna `Última verificación` actualizada a `2026-11-12`.
 - No hay GitHub Project visible para el token actual (`gh project list` devuelve 0 proyectos); la
   issue sí quedó actualizada.
 
 ## 6. Pendientes
 
-1. `terraform apply` en la cuenta correcta y repetir los criterios de la HU contra AWS.
+1. Repetir un `apply` aislado de B3 si se quiere evidencia separada de la integración; el Sandbox
+   ya validó las políticas, PITR y el flujo completo con las ramas integradas.
 2. Implementar el worker (B5/B6) para producir transiciones `PROCESSING/DONE/FAILED` en la bitácora.
 3. B2/B4/B6/B9/B10: storage, SNS, alarmas y diagrama completo.
 4. Prueba de carga (A8) y guía de despliegue (A9).
@@ -96,3 +113,5 @@ estado local si se empieza de cero), crear `infra/terraform.tfvars` a partir del
 4. `feat(api): B3 alta transaccional y endpoint de bitacora`
 5. `docs: B3 contrato, diagrama de datos y comparativa RDS vs DynamoDB`
 6. `docs: B3 trazabilidad, informe y guia de aprendizaje`
+7. `fix(dynamodb): B3 elimina la accion IAM invalida TransactWriteItems`
+8. `fix(api): B3 reconoce la ruta de eventos en KNOWN_ROUTES`
