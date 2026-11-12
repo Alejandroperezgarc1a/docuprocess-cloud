@@ -97,6 +97,8 @@ El tablero de [GitHub Projects](https://github.com/users/Alejandroperezgarc1a/pr
 La guía completa (requisitos, credenciales del Sandbox y solución de problemas) llega con la tarea A9. El orden mínimo es:
 
 ```bash
+export AWS_PROFILE=academy                                  # perfil del laboratorio; Terraform lo usa por defecto (var.aws_profile)
+aws sts get-caller-identity                                 # confirmar la cuenta del Sandbox antes de aplicar
 cp infra/terraform.tfvars.example infra/terraform.tfvars   # completar alert_email, db_password y jwt_secret
 ./scripts/package-app.sh                                    # genera dist/docuprocess-app.zip (Node 24 + zip)
 terraform -chdir=infra init

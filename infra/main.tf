@@ -1,8 +1,10 @@
 # Módulo raíz de DocuProcess Cloud.
-# Las credenciales NO están aquí: se leen de ~/.aws/credentials (copiadas de AWS Academy en cada sesión).
+# Las credenciales NO están aquí: se leen del perfil de AWS CLI configurado en
+# var.aws_profile (por defecto "academy", copiado de AWS Academy en cada sesión).
 
 provider "aws" {
-  region = var.aws_region
+  region  = var.aws_region
+  profile = var.aws_profile
 
   default_tags {
     tags = local.common_tags
@@ -11,7 +13,8 @@ provider "aws" {
 
 # awscc no soporta default_tags: los módulos le pasan local.common_tags explícitamente.
 provider "awscc" {
-  region = var.aws_region
+  region  = var.aws_region
+  profile = var.aws_profile
 }
 
 data "aws_caller_identity" "current" {}

@@ -8,6 +8,17 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
+variable "aws_profile" {
+  description = "Perfil de AWS CLI con las credenciales del laboratorio. Todo el proyecto usa el perfil academy."
+  type        = string
+  default     = "academy"
+
+  validation {
+    condition     = length(trimspace(var.aws_profile)) > 0
+    error_message = "aws_profile no puede estar vacío."
+  }
+}
+
 variable "project_name" {
   description = "Nombre del proyecto; prefijo de todos los recursos."
   type        = string

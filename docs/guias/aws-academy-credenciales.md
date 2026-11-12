@@ -29,38 +29,40 @@ de AWS apunte a la cuenta del laboratorio correcta.
 
 No pegues estas credenciales en el chat ni en el repositorio.
 
-## Paso 3: configurar el perfil local
+## Paso 3: configurar el perfil local `academy`
 
-Edita `~/.aws/credentials` y deja el perfil `default` asi, reemplazando los
-valores por los del laboratorio:
+El proyecto usa el perfil `academy` por defecto (`var.aws_profile = "academy"`).
+Edita `~/.aws/credentials` y agrega o reemplaza el perfil `academy` con los
+valores del laboratorio:
 
 ```ini
-[default]
+[academy]
 aws_access_key_id = TU_ACCESS_KEY
 aws_secret_access_key = TU_SECRET_KEY
 aws_session_token = TU_SESSION_TOKEN
 ```
 
-Edita `~/.aws/config`:
+Edita `~/.aws/config` para que ese perfil use la región del proyecto:
 
 ```ini
-[default]
+[profile academy]
 region = us-east-1
 output = json
 ```
 
 El proyecto usa `us-east-1` por defecto. Si tu laboratorio usa otra region,
-dime cual para ajustar `terraform.tfvars`.
+dime cual para ajustar `terraform.tfvars` (`aws_region`).
 
 ## Paso 4: verificar la cuenta
 
 Ejecuta:
 
 ```bash
+export AWS_PROFILE=academy
 aws sts get-caller-identity
 ```
 
-Debe mostrar la cuenta del laboratorio, no la cuenta personal actual.
+Debe mostrar la cuenta del laboratorio, no la cuenta personal.
 
 ## Paso 5: verificar el rol obligatorio
 

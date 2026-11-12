@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Todo el proyecto usa el perfil academy. Se puede sobreescribir con AWS_PROFILE
+# para trabajar contra otra cuenta del Sandbox.
+export AWS_PROFILE="${AWS_PROFILE:-academy}"
+
 if [ "$#" -lt 1 ]; then
   echo "usage: $0 <bucket> [<bucket> ...]" >&2
   exit 2
