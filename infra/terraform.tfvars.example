@@ -8,7 +8,7 @@ jwt_secret  = "CAMBIAR-minimo-32-caracteres-xxxxxxxxxx" # openssl rand -hex 32
 
 # Opcionales (valores por defecto)
 # aws_region                 = "us-east-1"
-# aws_profile                = "academy"
+# aws_profile                = "academy"   # opcional; sin valor se usa la cadena por defecto ([default])
 # project_name               = "docuprocess"
 # environment                = "dev"
 # instance_type              = "t3.micro"

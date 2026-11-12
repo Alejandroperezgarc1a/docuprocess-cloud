@@ -1,6 +1,7 @@
 # Módulo raíz de DocuProcess Cloud.
-# Las credenciales NO están aquí: se leen del perfil de AWS CLI configurado en
-# var.aws_profile (por defecto "academy", copiado de AWS Academy en cada sesión).
+# Las credenciales NO están aquí: se leen de la cadena de credenciales por defecto
+# de AWS ([default] en ~/.aws/credentials, variables de entorno, SSO...). Si se
+# necesita un perfil concreto, se define var.aws_profile (por defecto null).
 
 provider "aws" {
   region  = var.aws_region

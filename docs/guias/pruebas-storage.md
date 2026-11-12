@@ -5,7 +5,7 @@ cifrado, CORS, versionado, políticas, tags y privacidad de las URLs.
 
 ## Requisitos
 
-- Credenciales del laboratorio activas (`AWS_PROFILE=academy`).
+- Credenciales del laboratorio activas en la cadena por defecto de AWS (`[default]`), o `AWS_PROFILE` apuntando al perfil que las contenga.
 - `terraform apply -target=module.storage` ya ejecutado en `infra/`.
 - `aws`, `jq`, `curl` y `python3` en el PATH.
 
@@ -14,7 +14,6 @@ cifrado, CORS, versionado, políticas, tags y privacidad de las URLs.
 Desde la raíz del repositorio:
 
 ```bash
-export AWS_PROFILE=academy
 export AWS_REGION=us-east-1
 ./scripts/test-storage.sh
 ```

@@ -107,8 +107,9 @@ La semana del 2 al 6 de noviembre queda limitada a las fundaciones. B2, B3, B6, 
 La guía completa (requisitos, credenciales del Sandbox y solución de problemas) llega con la tarea A9. El orden mínimo es:
 
 ```bash
-export AWS_PROFILE=academy                                  # perfil del laboratorio; Terraform lo usa por defecto (var.aws_profile)
 aws sts get-caller-identity                                 # confirmar la cuenta del Sandbox antes de aplicar
+# Terraform y los scripts usan la cadena de credenciales por defecto ([default]).
+# Si prefieres un perfil concreto: export AWS_PROFILE=<perfil> o define aws_profile en terraform.tfvars.
 cp infra/terraform.tfvars.example infra/terraform.tfvars   # completar alert_email, db_password y jwt_secret
 ./scripts/package-app.sh                                    # genera dist/docuprocess-app.zip (Node 24 + zip)
 terraform -chdir=infra init

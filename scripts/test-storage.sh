@@ -4,9 +4,8 @@
 # Sin argumentos lee los outputs de Terraform desde infra/.
 set -euo pipefail
 
-# Todo el proyecto usa el perfil academy. Se puede sobreescribir con AWS_PROFILE.
-export AWS_PROFILE="${AWS_PROFILE:-academy}"
-
+# No se fija AWS_PROFILE: se usa el del llamador o la cadena de credenciales
+# por defecto de AWS.
 region="${AWS_REGION:-us-east-1}"
 failures=0
 

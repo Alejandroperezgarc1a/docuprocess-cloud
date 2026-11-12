@@ -9,13 +9,13 @@ variable "aws_region" {
 }
 
 variable "aws_profile" {
-  description = "Perfil de AWS CLI con las credenciales del laboratorio. Todo el proyecto usa el perfil academy."
+  description = "Perfil opcional de AWS CLI. Si se omite (null) se usa la cadena de credenciales por defecto ([default], variables de entorno, SSO, rol de instancia...)."
   type        = string
-  default     = "academy"
+  default     = null
 
   validation {
-    condition     = length(trimspace(var.aws_profile)) > 0
-    error_message = "aws_profile no puede estar vacío."
+    condition     = var.aws_profile == null || try(length(trimspace(var.aws_profile)) > 0, false)
+    error_message = "aws_profile no puede estar vacío; usar null para la cadena de credenciales por defecto."
   }
 }
 

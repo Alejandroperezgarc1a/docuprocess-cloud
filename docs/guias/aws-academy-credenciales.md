@@ -28,26 +28,30 @@ sesion de AWS debe apuntar a la cuenta del laboratorio correcta.
 
 No pegues estas credenciales en el chat ni en el repositorio.
 
-## Paso 3: configurar el perfil local `academy`
+## Paso 3: configurar las credenciales locales
 
-El proyecto usa el perfil `academy` por defecto (`var.aws_profile = "academy"`).
-Edita `~/.aws/credentials` y agrega o reemplaza el perfil `academy` con los
-valores del laboratorio:
+Por defecto el proyecto usa la cadena de credenciales de AWS (`var.aws_profile`
+es `null`), así que lo más simple es pegar las credenciales del laboratorio en
+el perfil `default`. Edita `~/.aws/credentials` y agrega o reemplaza ese perfil:
 
 ```ini
-[academy]
+[default]
 aws_access_key_id = TU_ACCESS_KEY
 aws_secret_access_key = TU_SECRET_KEY
 aws_session_token = TU_SESSION_TOKEN
 ```
 
-Edita `~/.aws/config` para que ese perfil use la región del proyecto:
+Edita `~/.aws/config` para fijar la región del proyecto:
 
 ```ini
-[profile academy]
+[default]
 region = us-east-1
 output = json
 ```
+
+Si prefieres no usar `[default]`, guarda las credenciales en otro perfil y
+expórtalo con `export AWS_PROFILE=<perfil>` o define `aws_profile = "<perfil>"`
+en `infra/terraform.tfvars`. Terraform y los scripts usan el mismo perfil.
 
 El proyecto usa `us-east-1` por defecto. Si tu laboratorio usa otra region,
 dime cual para ajustar `terraform.tfvars` (`aws_region`).
@@ -57,9 +61,11 @@ dime cual para ajustar `terraform.tfvars` (`aws_region`).
 Ejecuta:
 
 ```bash
-export AWS_PROFILE=academy
 aws sts get-caller-identity
 ```
+
+Si usas un perfil distinto de `[default]`, exporta `AWS_PROFILE=<perfil>` antes
+del comando (o define `aws_profile` en `terraform.tfvars`).
 
 Debe mostrar la cuenta del laboratorio, no la cuenta personal.
 

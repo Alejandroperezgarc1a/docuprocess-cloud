@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Todo el proyecto usa el perfil academy. Se puede sobreescribir con AWS_PROFILE
-# para trabajar contra otra cuenta del Sandbox.
-export AWS_PROFILE="${AWS_PROFILE:-academy}"
+# No se fija AWS_PROFILE: se usa el que tenga el llamador (Terraform hereda su
+# entorno) o, si no hay, la cadena de credenciales por defecto de AWS.
 
 if [ "$#" -lt 1 ]; then
   echo "usage: $0 <bucket> [<bucket> ...]" >&2
