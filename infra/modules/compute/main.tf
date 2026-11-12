@@ -161,6 +161,24 @@ resource "aws_autoscaling_group" "app" {
   health_check_type         = "ELB"
   health_check_grace_period = 300
 
+  # Warmup del grupo (A7): durante estos segundos una instancia recién lanzada no cuenta en la CPU
+  # promedio del target tracking, así una máquina que aún arranca (0 % o 100 % de CPU) no distorsiona
+  # la decisión. AWS recomienda definirlo aquí y no en la política.
+  default_instance_warmup = var.instance_warmup
+
+  # Métricas del grupo en CloudWatch, cada minuto y sin costo: permiten ver en A8 cómo cambian la
+  # capacidad deseada y las instancias en servicio durante la prueba de carga.
+  metrics_granularity = "1Minute"
+  enabled_metrics = [
+    "GroupMinSize",
+    "GroupMaxSize",
+    "GroupDesiredCapacity",
+    "GroupInServiceInstances",
+    "GroupPendingInstances",
+    "GroupTerminatingInstances",
+    "GroupTotalInstances",
+  ]
+
   # Versión fija (latest_version, un número) y no "$Latest": cada ASG queda atado a la versión
   # con la que nació, y el cambio de versión es lo que dispara el reemplazo.
   launch_template {
@@ -175,7 +193,7 @@ resource "aws_autoscaling_group" "app" {
 
   lifecycle {
     create_before_destroy = true
-    # A7 ajustará desired_capacity con la política de escalado; que Terraform no lo revierta.
+    # La política de A7 mueve desired_capacity; que Terraform no la revierta en cada apply.
     ignore_changes = [desired_capacity]
   }
 
@@ -193,5 +211,34 @@ resource "aws_autoscaling_group" "app" {
       value               = tag.value
       propagate_at_launch = true
     }
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Escalado dinámico (A7)
+# -----------------------------------------------------------------------------
+
+# Target tracking: AWS crea dos alarmas de CloudWatch (AlarmHigh y AlarmLow) y ajusta la capacidad
+# deseada para que la CPU promedio del grupo quede cerca de cpu_target_value, entre min y max.
+# Va atada al nombre del ASG: cuando A4 reemplaza el ASG (versión nueva del launch template), la
+# política y sus alarmas se crean con el ASG nuevo y se borran con el viejo. No duplicar estas
+# alarmas en monitoring (B10).
+resource "aws_autoscaling_policy" "cpu" {
+  name                   = "${var.name_prefix}-cpu-target"
+  autoscaling_group_name = aws_autoscaling_group.app.name
+  policy_type            = "TargetTrackingScaling"
+
+  target_tracking_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ASGAverageCPUUtilization"
+    }
+    target_value = var.cpu_target_value
+  }
+
+  # Sin esto Terraform borra la política vieja ANTES de crear el ASG nuevo (create_before_destroy
+  # se propaga a las dependencias del ASG, no a quienes dependen de él) y el ASG viejo queda sin
+  # escalado durante el despliegue. El nombre no choca: cada política es de un ASG distinto.
+  lifecycle {
+    create_before_destroy = true
   }
 }

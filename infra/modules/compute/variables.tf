@@ -68,3 +68,15 @@ variable "health_check_path" {
   type        = string
   default     = "/api/health"
 }
+
+variable "cpu_target_value" {
+  description = "Objetivo de CPU promedio (%) del target tracking (A7)."
+  type        = number
+  default     = 60
+}
+
+variable "instance_warmup" {
+  description = "Segundos que una instancia nueva tarda en aportar métricas fiables (A7). Medido en A4: ~45 s de arranque + ~30 s hasta healthy en el ALB."
+  type        = number
+  default     = 120
+}
