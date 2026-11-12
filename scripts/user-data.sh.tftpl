@@ -68,6 +68,11 @@ DDB_TRANSACTIONS=${ddb_transactions}
 DOCS_BUCKET=${docs_bucket}
 SNS_TOPIC_ARN=${sns_topic_arn}
 ARTIFACTS_BUCKET=${artifacts_bucket}
+WORKER_POLL_SECONDS=${worker_poll_seconds}
+WORKER_BATCH_SIZE=${worker_batch_size}
+UPLOAD_TIMEOUT_MINUTES=${upload_timeout_minutes}
+MAX_FILE_MB=${max_file_mb}
+LOG_LEVEL=INFO
 ENV
 unset DB_PASSWORD JWT_SECRET
 chown root:root "$ENV_FILE"
@@ -112,8 +117,10 @@ $extra_env
 ExecStart=$NODE_BIN $APP_DIR/$1/$3
 Restart=always
 RestartSec=3
+TimeoutStopSec=120
 NoNewPrivileges=true
 PrivateTmp=true
+ReadWritePaths=/tmp
 ProtectSystem=strict
 ProtectHome=true
 

@@ -18,12 +18,13 @@
 | Elemento | Valor |
 | --- | --- |
 | Código | `/opt/docuprocess/{api,worker}` |
-| Entorno de ejecución | `/opt/docuprocess/api/dist` + `/opt/docuprocess/api/node_modules` (vendorizado) |
+| Entorno de ejecución | `/opt/docuprocess/{api,worker}/dist` + `node_modules` vendorizado |
 | Configuración | `/etc/docuprocess.env` (permisos 600, dueño root) |
 | Unidades systemd | `docuprocess-api.service`, `docuprocess-worker.service` (`EnvironmentFile=/etc/docuprocess.env`, `Restart=always`) |
 | Arranque de la API | `node /opt/docuprocess/api/dist/server.js` con `WEB_CONCURRENCY=2` |
+| Arranque del worker | `node /opt/docuprocess/worker/dist/worker.js` (un proceso por instancia) |
 | Usuario del sistema | `docuprocess` |
-| Logs | stdout/stderr → journald (`journalctl -u docuprocess-api`) |
+| Logs | stdout/stderr → journald (`journalctl -u docuprocess-api`, `journalctl -u docuprocess-worker`) |
 | Log del arranque | `/var/log/docuprocess-userdata.log` |
 
 ### 3. Variables de entorno
@@ -45,7 +46,11 @@
 | `ARTIFACTS_BUCKET` | `module.storage.artifacts_bucket_name` | userData | vacío |
 | `DDB_ENDPOINT_URL` | **no se define** | API, worker | `http://localhost:8001` |
 | `CORS_ALLOWED_ORIGINS` | **no se define** (mismo origen vía CloudFront) | API | `http://localhost:5500` |
-| `WORKER_POLL_SECONDS` | opcional (5) | worker | `5` |
+| `WORKER_POLL_SECONDS` | `var.worker_poll_seconds` (5) | worker | `5` |
+| `WORKER_BATCH_SIZE` | `var.worker_batch_size` (10) | worker | `10` |
+| `UPLOAD_TIMEOUT_MINUTES` | `var.upload_timeout_minutes` (15) | worker | `15` |
+| `MAX_FILE_MB` | `var.max_file_mb` (10) | worker | `10` |
+| `LOG_LEVEL` | fijo `INFO` en AWS | worker | `INFO` |
 
 Reglas:
 - La aplicación **falla al arrancar** si falta una variable obligatoria (configuración por entorno, al estilo 12-factor).
@@ -114,6 +119,11 @@ actualizar ni borrar eventos.
 documento. El resto de transiciones las hará el worker con un `Update` condicional del documento
 (`#s = :from`) + `Put` del evento.
 
+El worker escribe `PENDING→PROCESSING`, `PROCESSING→DONE`, `PROCESSING→FAILED` y
+`PENDING→FAILED` (timeout de subida) con `actor="worker"`. Si `DDB_TRANSACTIONS=true`, el
+`Update` del documento y el `Put` del evento van en un `TransactWriteItems`; si es `false`, se
+escriben secuencialmente como respaldo del Sandbox.
+
 ```mermaid
 flowchart LR
   API[API] -->|TransactWriteItems| D[(documents)]
@@ -153,7 +163,7 @@ Formato de error: `{"error": "<codigo>", "message": "<texto legible>"}`.
 
 ### 8. Archivos permitidos
 
-`application/pdf`, `image/png`, `image/jpeg` y `text/plain`, con un máximo de **10 MB**. Lo valida el frontend (B7), la API sobre lo declarado (A6) y el worker sobre el archivo real (B6). Una URL prefirmada de tipo PUT no puede imponer el tamaño, por eso el worker es la última barrera.
+`application/pdf`, `image/png`, `image/jpeg` y `text/plain`, con un máximo de **10 MB**. Lo valida el frontend (B7), la API sobre lo declarado (A6) y el worker sobre el archivo real (B5). Una URL prefirmada de tipo PUT no puede imponer el tamaño, por eso el worker es la última barrera. El worker detecta el MIME por magic bytes (`file-type`) y, si no hay firma conocida, acepta UTF-8 válido como `text/plain`; rechaza el resto.
 
 ### 9. Notificación SNS (worker)
 
@@ -165,7 +175,7 @@ Formato de error: `{"error": "<codigo>", "message": "<texto legible>"}`.
 
 **Locals compartidos (raíz):** `name_prefix = "${project_name}-${environment}"` (por defecto `docuprocess-dev`), `instance_profile_name` (descubierto) y `app_role_arn` (construido).
 
-**Variables raíz:** ver `infra/variables.tf` (C2). Las principales son `aws_region`, `project_name`, `environment`, `azs`, `vpc_cidr`, `public_subnet_cidrs`, `private_subnet_cidrs`, `enable_nat_gateway`, `enable_interface_endpoints`, `instance_type`, `instance_role_name`, `asg_min_size`, `asg_max_size`, `asg_desired_capacity`, `cpu_target_value`, `root_volume_size`, `db_name`, `db_username`, `db_password`, `jwt_secret`, `alert_email`, `dynamodb_table_name`, `document_events_table_name`, `enable_dynamodb_transactions`, `enable_point_in_time_recovery`, `app_artifact_path`, `cors_allowed_origins` y `force_destroy_buckets`.
+**Variables raíz:** ver `infra/variables.tf` (C2). Las principales son `aws_region`, `project_name`, `environment`, `azs`, `vpc_cidr`, `public_subnet_cidrs`, `private_subnet_cidrs`, `enable_nat_gateway`, `enable_interface_endpoints`, `instance_type`, `instance_role_name`, `asg_min_size`, `asg_max_size`, `asg_desired_capacity`, `cpu_target_value`, `root_volume_size`, `db_name`, `db_username`, `db_password`, `jwt_secret`, `alert_email`, `dynamodb_table_name`, `document_events_table_name`, `enable_dynamodb_transactions`, `enable_point_in_time_recovery`, `worker_poll_seconds`, `worker_batch_size`, `upload_timeout_minutes`, `max_file_mb`, `app_artifact_path`, `cors_allowed_origins` y `force_destroy_buckets`.
 
 **Outputs por módulo** (nombres exactos):
 
@@ -241,6 +251,9 @@ aws dynamodb create-table --endpoint-url http://localhost:8001 --region us-east-
   --global-secondary-indexes \
     '[{"IndexName":"userId-eventAt","KeySchema":[{"AttributeName":"userId","KeyType":"HASH"},{"AttributeName":"eventAt","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}},
       {"IndexName":"day-eventAt","KeySchema":[{"AttributeName":"eventDay","KeyType":"HASH"},{"AttributeName":"eventAt","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}}]'
+
+# Worker en local (DynamoDB Local + bucket real; SNS vacío escribe en el log)
+cd app/worker && npm ci && npm run build && node dist/worker.js
 
 docker compose down             # detener (DynamoDB Local es en memoria: las tablas se pierden)
 docker compose down -v          # además borrar los datos de MySQL

@@ -256,6 +256,50 @@ variable "enable_dynamodb_transactions" {
   default     = true
 }
 
+variable "worker_poll_seconds" {
+  description = "Cada cuántos segundos el worker consulta documentos PENDING."
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.worker_poll_seconds >= 1 && var.worker_poll_seconds <= 3600
+    error_message = "worker_poll_seconds debe estar entre 1 y 3600."
+  }
+}
+
+variable "worker_batch_size" {
+  description = "Máximo de documentos que el worker procesa por ciclo."
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.worker_batch_size >= 1 && var.worker_batch_size <= 100
+    error_message = "worker_batch_size debe estar entre 1 y 100."
+  }
+}
+
+variable "upload_timeout_minutes" {
+  description = "Minutos tras los cuales un PENDING sin archivo se marca FAILED (upload timeout)."
+  type        = number
+  default     = 15
+
+  validation {
+    condition     = var.upload_timeout_minutes >= 1 && var.upload_timeout_minutes <= 1440
+    error_message = "upload_timeout_minutes debe estar entre 1 y 1440."
+  }
+}
+
+variable "max_file_mb" {
+  description = "Tamaño máximo real del archivo que acepta el worker."
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.max_file_mb >= 1 && var.max_file_mb <= 100
+    error_message = "max_file_mb debe estar entre 1 y 100."
+  }
+}
+
 # El default del Sandbox es true, pero puede denegar Point-in-time recovery (PITR).
 # PITR permite restaurar a un segundo exacto de los últimos 35 días; si la SCP lo
 # deniega, poner en false en terraform.tfvars y el módulo lo desactiva sin más cambios.
