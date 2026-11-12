@@ -1,15 +1,14 @@
-# Guia rapida: credenciales de AWS Academy para B2
+# Guia rapida: credenciales de AWS Academy
 
 ## Por que necesito que hagas esto
 
-El plan completo de Terraform se detiene porque la cuenta de AWS configurada
-actualmente no tiene el rol ni el instance profile
-`AmazonSSMRoleForInstancesQuickSetup`. Ese rol es obligatorio en el Sandbox y
-no se puede crear desde Terraform.
+El plan completo de Terraform necesita el rol y el instance profile
+`AmazonSSMRoleForInstancesQuickSetup` de la cuenta del laboratorio. Ese rol es
+obligatorio en el Sandbox y no se puede crear desde Terraform.
 
-B2 ya esta implementado y validado con `terraform validate` y un plan
-`-target=module.storage`. Para probar los buckets reales necesito que la sesion
-de AWS apunte a la cuenta del laboratorio correcta.
+Los modulos ya implementados se validan con `terraform validate` y planes
+dirigidos. Para probar los recursos reales y completar la integracion, la
+sesion de AWS debe apuntar a la cuenta del laboratorio correcta.
 
 ## Paso 1: abrir el laboratorio
 
@@ -78,16 +77,9 @@ indicado por el laboratorio.
 
 ## Paso 6: avisarme
 
-Cuando las credenciales esten listas, dime solamente:
-
-> Credenciales de AWS Academy listas
-
-Con eso puedo ejecutar las pruebas pendientes:
-
-1. `terraform apply -target=module.storage`
-2. Verificar bloqueo publico, cifrado, ownership, CORS y versionado.
-3. Subir objetos de prueba y comprobar que la URL publica devuelve 403.
-4. `terraform destroy` para validar el vaciado de buckets.
+Cuando las credenciales esten listas, confirma que `aws sts get-caller-identity`
+devuelve la cuenta del laboratorio. Con eso se pueden ejecutar los planes y
+aplicaciones dirigidas de cada modulo, y despues la integracion end-to-end.
 
 ## Si el rol no aparece
 

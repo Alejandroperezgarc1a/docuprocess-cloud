@@ -108,7 +108,7 @@ Formato de error: `{"error": "<codigo>", "message": "<texto legible>"}`.
 
 ### 8. Archivos permitidos
 
-`application/pdf`, `image/png`, `image/jpeg` y `text/plain`, con un máximo de **10 MB**. Lo valida el frontend (B7), la API sobre lo declarado (A6) y el worker sobre el archivo real (B6). Una URL prefirmada de tipo PUT no puede imponer el tamaño, por eso el worker es la última barrera.
+`application/pdf`, `image/png`, `image/jpeg` y `text/plain`, con un máximo de **10 MB**. Lo valida el frontend (B8), la API sobre lo declarado (A6) y el worker sobre el archivo real (B5). Una URL prefirmada de tipo PUT no puede imponer el tamaño, por eso el worker es la última barrera.
 
 ### 9. Notificación SNS (worker)
 

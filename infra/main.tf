@@ -207,4 +207,4 @@ module "compute" {
 
 # --- cdn (B5)
 
-# --- monitoring (B9)
+# --- monitoring (B10)

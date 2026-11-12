@@ -7,7 +7,7 @@
 #
 # aws_sns_topic_policy reemplaza la política por defecto del tópico. Por eso se
 # conceden explícitamente los dos publicadores: el rol de las EC2 (worker) y el
-# servicio CloudWatch (alarmas de B9). No se usa sns:*: SNS rechaza acciones
+# servicio CloudWatch (alarmas de B10). No se usa sns:*: SNS rechaza acciones
 # fuera del ámbito del servicio (spike A1).
 
 data "aws_caller_identity" "current" {}
