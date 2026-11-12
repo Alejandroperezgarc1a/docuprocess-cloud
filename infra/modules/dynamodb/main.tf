@@ -70,6 +70,9 @@ resource "aws_dynamodb_table" "documents" {
 # El rol de las instancias solo tiene permisos de SSM: los permisos de datos se conceden con
 # una política basada en el recurso (spike A1). TransactWriteItems se usa para escribir el
 # estado y su evento de auditoría en una sola operación atómica.
+# TransactWriteItems no es una acción IAM: DynamoDB autoriza la transacción con las acciones
+# de cada ítem (PutItem, UpdateItem, ConditionCheckItem, DeleteItem). No agregar
+# "dynamodb:TransactWriteItems" a la política; AWS la rechaza como acción inválida.
 resource "aws_dynamodb_resource_policy" "documents" {
   resource_arn = aws_dynamodb_table.documents.arn
 
@@ -87,7 +90,6 @@ resource "aws_dynamodb_resource_policy" "documents" {
           "dynamodb:PutItem",
           "dynamodb:UpdateItem",
           "dynamodb:Query",
-          "dynamodb:TransactWriteItems",
         ]
         Resource = [
           aws_dynamodb_table.documents.arn,
@@ -174,7 +176,6 @@ resource "aws_dynamodb_resource_policy" "events" {
           "dynamodb:GetItem",
           "dynamodb:PutItem",
           "dynamodb:Query",
-          "dynamodb:TransactWriteItems",
         ]
         Resource = [
           aws_dynamodb_table.events.arn,

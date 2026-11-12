@@ -251,7 +251,7 @@ variable "document_events_table_name" {
 }
 
 variable "enable_dynamodb_transactions" {
-  description = "Escribe estado y evento en una transacción. Poner en false solo si el Sandbox deniega TransactWriteItems."
+  description = "Escribe estado y evento en una transacción. Poner en false solo si el Sandbox deniega las escrituras transaccionales."
   type        = bool
   default     = true
 }

@@ -70,8 +70,8 @@ export function createAwsService(config: Config): AwsService {
      * audit trail can never disagree. The document condition also makes creation idempotent: a
      * duplicate documentId fails instead of overwriting an existing document.
      *
-     * DDB_TRANSACTIONS=false is the Sandbox escape hatch: if the SCP denies TransactWriteItems,
-     * the two PutItems run in sequence. The event is written after the document, so a failure
+     * DDB_TRANSACTIONS=false is the Sandbox escape hatch: if the SCP denies the transactional
+     * writes, the two PutItems run in sequence. The event is written after the document, so a failure
      * between them leaves a document without its PENDING event (documented in architecture, 12).
      */
     async createDocument(item: DocumentItem, event: DocumentEvent): Promise<void> {

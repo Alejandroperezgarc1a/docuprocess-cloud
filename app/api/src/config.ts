@@ -5,7 +5,7 @@ export interface Config {
   ddbEventsTable: string;
   /** When false, state and audit event are written sequentially (Sandbox fallback). */
   // Por qué: el alta debe escribir documento + evento de forma atómica. Si una SCP
-  // deniega TransactWriteItems, DDB_TRANSACTIONS=false permite seguir operando (sin
+  // deniega las escrituras transaccionales, DDB_TRANSACTIONS=false permite seguir operando (sin
   // atomicidad) en vez de bloquear toda la plataforma.
   ddbTransactions: boolean;
   dbHost: string;
