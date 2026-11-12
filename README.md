@@ -101,6 +101,7 @@ cp infra/terraform.tfvars.example infra/terraform.tfvars   # completar alert_ema
 ./scripts/package-app.sh                                    # genera dist/docuprocess-app.zip (Node 24 + zip)
 terraform -chdir=infra init
 terraform -chdir=infra apply
+# Revisar el correo de AWS y confirmar la suscripción de SNS antes de probar las alertas.
 ```
 
 `package-app.sh` va **antes** de cada `apply` que deba llevar código nuevo: Terraform sube el zip con su hash en el nombre y, si cambió, reemplaza las instancias sin caída del servicio.

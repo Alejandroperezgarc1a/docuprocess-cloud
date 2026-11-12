@@ -115,6 +115,7 @@ Formato de error: `{"error": "<codigo>", "message": "<texto legible>"}`.
 - Subject: `DocuProcess: <filename> <status>` (máximo 100 caracteres, el límite de SNS).
 - Cuerpo JSON: `{"documentId", "userId", "filename", "status", "error"?}`.
 - Si `SNS_TOPIC_ARN` está vacío (desarrollo local), el worker escribe el mensaje en el log.
+- La suscripción de correo queda en `PendingConfirmation` hasta que el destinatario pulsa el enlace del correo de AWS. Terraform no puede confirmarla ni borrar una suscripción sin confirmar; hay que confirmarla después del `apply` antes de la demostración.
 
 ### 10. Nombres en Terraform
 
