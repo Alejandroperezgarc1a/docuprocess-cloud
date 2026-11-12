@@ -28,6 +28,8 @@ function startWorker(): void {
       `${new Date().toISOString()} INFO docuprocess.api: escuchando en 0.0.0.0:${PORT} (pid ${process.pid})`,
     );
   });
+  server.keepAliveTimeout = 65000; // más que los 60 s del ALB
+  server.headersTimeout = 66000;   // debe ser mayor que keepAliveTimeout
 
   let shuttingDown = false;
   const shutdown = (signal: string): void => {
@@ -63,6 +65,7 @@ function startPrimary(workers: number): void {
     console.error(
       `${new Date().toISOString()} ERROR docuprocess.api: worker ${worker.process.pid ?? '?'} termino (code=${code}, signal=${signal}); reiniciando`,
     );
+
     cluster.fork();
   });
 
@@ -74,6 +77,7 @@ function startPrimary(workers: number): void {
     console.log(
       `${new Date().toISOString()} INFO docuprocess.api: ${signal} recibido, cerrando workers`,
     );
+
     for (const worker of Object.values(cluster.workers ?? {})) {
       worker?.kill('SIGTERM');
     }
@@ -101,6 +105,7 @@ try {
     console.error(
       `${new Date().toISOString()} ERROR docuprocess.api: configuracion invalida: ${error.message}`,
     );
+
     process.exit(1);
   }
   throw error;

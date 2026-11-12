@@ -336,6 +336,69 @@ export const openApiSpec = {
         },
       },
     },
+    // Bitácora auditable: 404 (no 403) para documento ajeno o inexistente, para no revelar si
+    // el documentId existe. El orden es cronológico ascendente, como un log de eventos.
+    '/api/documents/{documentId}/events': {
+      get: {
+        tags: ['Documents'],
+        summary: 'Get the audit trail of a document',
+        description:
+          'Queries document_events in ascending order and returns the state transitions (append-only audit log). Returns 404 when the document does not exist or belongs to another user.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'documentId',
+            in: 'path',
+            required: true,
+            description: 'Document UUID v4.',
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Chronological audit trail (at most 200 events).',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['items'],
+                  properties: {
+                    items: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/DocumentEvent' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': {
+            description: 'Missing, invalid or expired bearer token.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          '404': {
+            description: 'Document not found or owned by another user.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          '503': {
+            description: 'DynamoDB is unavailable.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+        },
+      },
+    },
   },
   components: {
     securitySchemes: {
@@ -505,6 +568,46 @@ export const openApiSpec = {
           },
           result: { $ref: '#/components/schemas/DocumentResult' },
           error: { type: 'string' },
+        },
+      },
+      // Espejo de app/api/src/types.ts (DocumentEvent): la API nunca escribe actualizaciones
+      // sobre este esquema; un cambio de formato implica schemaVersion +1.
+      DocumentEvent: {
+        type: 'object',
+        required: [
+          'documentId',
+          'eventAt',
+          'eventId',
+          'userId',
+          'eventDay',
+          'toStatus',
+          'actor',
+          'schemaVersion',
+        ],
+        properties: {
+          documentId: { type: 'string', format: 'uuid' },
+          eventAt: {
+            type: 'string',
+            example: '2026-11-11T14:00:02.400Z#a1b2c3',
+            description: 'Sort key: ISO-8601 UTC with milliseconds plus a random suffix.',
+          },
+          eventId: { type: 'string', format: 'uuid' },
+          userId: { type: 'string' },
+          eventDay: { type: 'string', example: '2026-11-11' },
+          fromStatus: {
+            type: 'string',
+            enum: ['PENDING', 'PROCESSING', 'DONE', 'FAILED'],
+            description: 'Absent on the creation event.',
+          },
+          toStatus: {
+            type: 'string',
+            enum: ['PENDING', 'PROCESSING', 'DONE', 'FAILED'],
+          },
+          actor: { type: 'string', enum: ['api', 'worker', 'system'] },
+          reason: { type: 'string' },
+          error: { type: 'string' },
+          requestId: { type: 'string' },
+          schemaVersion: { type: 'integer', example: 1 },
         },
       },
     },

@@ -32,9 +32,9 @@
 | Variable | Origen en AWS | Usa | Local (`.env`) |
 | --- | --- | --- | --- |
 | `DOCS_BUCKET` | `module.storage.docs_bucket_name` | API, worker | bucket real (obligatorio para la API) |
-| `DDB_TABLE` | `var.dynamodb_table_name` (B3 lo cablea al módulo) | API, worker | `documents` |
-| `DDB_EVENTS_TABLE` | `var.ddb_events_table` (B3) | worker | `document_events` |
-| `DDB_TRANSACTIONS` | `var.ddb_transactions` (B3) | API, worker | `true` |
+| `DDB_TABLE` | `module.dynamodb.table_name` | API, worker | `documents` |
+| `DDB_EVENTS_TABLE` | `module.dynamodb.events_table_name` | API, worker | `document_events` |
+| `DDB_TRANSACTIONS` | `var.enable_dynamodb_transactions` (`true`) | API, worker | `true` |
 | `SNS_TOPIC_ARN` | `module.sns.topic_arn` | worker | vacío (solo log) |
 | `DB_HOST` | `module.rds.db_address` | API | `127.0.0.1` |
 | `DB_PORT` | `module.rds.db_port` (opcional, 3306) | API | `3306` |
@@ -57,6 +57,8 @@ Reglas:
 - `DOCS_BUCKET` no puede estar vacío: la API falla al arrancar.
 - El AWS SDK v3 recibe `region: config.awsRegion` explícitamente.
 - Si `DDB_ENDPOINT_URL` está definida, se pasa como `endpoint_url` al cliente de DynamoDB.
+- `DDB_EVENTS_TABLE` es obligatoria: sin bitácora la API no arranca (falla rápido, no a medias).
+- `DDB_TRANSACTIONS=false` es solo un **fallback del Sandbox**: escribe el documento y luego el evento sin atomicidad. En AWS normal se deja `true`.
 - En AWS, las credenciales vienen del instance profile vía IMDSv2; nunca se escriben en código ni en archivos.
 
 ### 4. Ítem de DynamoDB (tabla `documents`)
@@ -87,30 +89,50 @@ PENDING ──(worker reclama con update condicional)──► PROCESSING ──
 
 `status` es palabra reservada de DynamoDB: siempre va en `ExpressionAttributeNames` (`#s`).
 
-### 4.1 Bitácora `document_events`
+#### 4.1. Bitácora auditable (`document_events`)
 
-Tabla append-only para auditoría y para reconstruir el historial de un documento. La API registra
-la creación; el worker registra cada transición que ejecuta.
+`documents` guarda el **estado actual** (se sobrescribe). El **historial** vive en una tabla
+separada, `document_events`, que es *append-only*: la política del rol solo permite `PutItem`,
+`GetItem` y `Query`; las transacciones se autorizan con las acciones de cada ítem. No puede
+actualizar ni borrar eventos.
 
 | Atributo | Tipo | Descripción |
 | --- | --- | --- |
-| `documentId` | S (PK) | Documento al que pertenece el evento |
-| `eventAt` | S (SK) | `ISO-8601 UTC con ms + "#" + 6 hex`; ordena cronológicamente y evita colisiones en el mismo milisegundo |
-| `eventId` | S | UUID del evento |
-| `userId` | S | Dueño del documento |
-| `eventDay` | S | `YYYY-MM-DD`, para consultas por día |
-| `fromStatus` | S | Estado anterior; ausente en la creación |
+| `documentId` | S (PK) | UUID del documento |
+| `eventAt` | S (SK) | ISO-8601 UTC con ms + `#` + 6 hex: `2026-11-11T14:03:22.123Z#a1b2c3`. El sufijo evita colisiones en el mismo milisegundo |
+| `eventId` | S | UUID v4 del evento |
+| `userId` | S | Dueño del documento (string) |
+| `eventDay` | S | `YYYY-MM-DD` UTC (clave del GSI `day-eventAt`) |
+| `fromStatus` | S | Estado anterior; ausente en el evento de creación |
 | `toStatus` | S | Estado nuevo |
 | `actor` | S | `api`, `worker` o `system` |
 | `reason` | S | Motivo legible (opcional) |
-| `error` | S | Error de una transición a `FAILED` (opcional) |
-| `requestId` | S | Correlación con la request de la API (opcional) |
-| `schemaVersion` | N | `1` |
+| `error` | S | Detalle del fallo (opcional) |
+| `requestId` | S | Correlación con logs (opcional) |
+| `schemaVersion` | N | Versión del esquema del evento (hoy `1`) |
+
+Índices: `userId-eventAt` (auditoría de un usuario entre documentos) y `day-eventAt`
+(auditoría global por día). La creación usa `TransactWriteItems`: el `Put` del documento y el
+`Put` del evento se confirman juntos o ninguno. La condición del documento
+(`attribute_not_exists(documentId)`) evita sobrescribir uno existente; la del evento
+(`attribute_not_exists(eventAt)`) protege su clave exacta y no limita los demás eventos del
+documento. El resto de transiciones las hará el worker con un `Update` condicional del documento
+(`#s = :from`) + `Put` del evento.
 
 El worker escribe `PENDING→PROCESSING`, `PROCESSING→DONE`, `PROCESSING→FAILED` y
 `PENDING→FAILED` (timeout de subida) con `actor="worker"`. Si `DDB_TRANSACTIONS=true`, el
 `Update` del documento y el `Put` del evento van en un `TransactWriteItems`; si es `false`, se
 escriben secuencialmente como respaldo del Sandbox.
+
+```mermaid
+flowchart LR
+  API[API] -->|TransactWriteItems| D[(documents)]
+  API -->|TransactWriteItems| E[(document_events)]
+  W[Worker] -->|Update condicional| D
+  W -->|Put append-only| E
+  D -->|GSI status-createdAt| Q[Cola PENDING]
+  E -->|GSI userId-eventAt / day-eventAt| A[Auditoría]
+```
 
 ### 5. Clave en S3
 
@@ -135,6 +157,7 @@ Todas las rutas empiezan por `/api` (CloudFront enruta `/api/*` al ALB). JSON en
 | `POST /api/documents` | Sí | `{filename, contentType, size}` | `201 {documentId, uploadUrl, method:"PUT", headers:{"Content-Type"}, key, expiresIn: 900}` | 400, 401 |
 | `GET /api/documents` | Sí | — | `200 {items:[…]}` (máx. 50, más recientes primero) | 401 |
 | `GET /api/documents/{id}` | Sí | — | `200 {…ítem…}` | 401, 404 (no existe o es de otro usuario) |
+| `GET /api/documents/{id}/events` | Sí | — | `200 {items:[…]}` (bitácora ascendente, máx. 200) | 401, 404, 503 |
 
 Formato de error: `{"error": "<codigo>", "message": "<texto legible>"}`.
 
@@ -152,7 +175,7 @@ Formato de error: `{"error": "<codigo>", "message": "<texto legible>"}`.
 
 **Locals compartidos (raíz):** `name_prefix = "${project_name}-${environment}"` (por defecto `docuprocess-dev`), `instance_profile_name` (descubierto) y `app_role_arn` (construido).
 
-**Variables raíz:** ver `infra/variables.tf` (C2). Las principales son `aws_region`, `project_name`, `environment`, `azs`, `vpc_cidr`, `public_subnet_cidrs`, `private_subnet_cidrs`, `enable_nat_gateway`, `enable_interface_endpoints`, `instance_type`, `instance_role_name`, `asg_min_size`, `asg_max_size`, `asg_desired_capacity`, `cpu_target_value`, `root_volume_size`, `db_name`, `db_username`, `db_password`, `jwt_secret`, `alert_email`, `dynamodb_table_name`, `app_artifact_path`, `cors_allowed_origins` y `force_destroy_buckets`.
+**Variables raíz:** ver `infra/variables.tf` (C2). Las principales son `aws_region`, `project_name`, `environment`, `azs`, `vpc_cidr`, `public_subnet_cidrs`, `private_subnet_cidrs`, `enable_nat_gateway`, `enable_interface_endpoints`, `instance_type`, `instance_role_name`, `asg_min_size`, `asg_max_size`, `asg_desired_capacity`, `cpu_target_value`, `root_volume_size`, `db_name`, `db_username`, `db_password`, `jwt_secret`, `alert_email`, `dynamodb_table_name`, `document_events_table_name`, `enable_dynamodb_transactions`, `enable_point_in_time_recovery`, `worker_poll_seconds`, `worker_batch_size`, `upload_timeout_minutes`, `max_file_mb`, `app_artifact_path`, `cors_allowed_origins` y `force_destroy_buckets`.
 
 **Outputs por módulo** (nombres exactos):
 
@@ -162,12 +185,12 @@ Formato de error: `{"error": "<codigo>", "message": "<texto legible>"}`.
 | compute | `alb_dns_name`, `alb_arn_suffix`, `target_group_arn_suffix`, `asg_name`, `launch_template_id` |
 | rds | `db_address`, `db_port`, `db_instance_identifier` |
 | storage | `docs_bucket_name`, `docs_bucket_arn`, `frontend_bucket_name`, `frontend_bucket_arn`, `frontend_bucket_regional_domain_name`, `artifacts_bucket_name`, `artifacts_bucket_arn` |
-| dynamodb | `table_name`, `table_arn` |
+| dynamodb | `table_name`, `table_arn`, `events_table_name`, `events_table_arn` |
 | sns | `topic_arn`, `topic_name` |
 | cdn | `cloudfront_domain_name`, `distribution_id`, `distribution_arn` |
 | monitoring | `alarm_names`, `cloudtrail_bucket_name`, `cloudtrail_arn` |
 
-**Outputs raíz:** `alb_dns_name`, `cloudfront_domain_name`, `cloudfront_distribution_id`, `app_url`, `docs_bucket_name`, `frontend_bucket_name`, `artifacts_bucket_name`, `dynamodb_table_name`, `sns_topic_arn`, `rds_endpoint`, `asg_name` y `vpc_id`.
+**Outputs raíz:** `alb_dns_name`, `cloudfront_domain_name`, `cloudfront_distribution_id`, `app_url`, `docs_bucket_name`, `frontend_bucket_name`, `artifacts_bucket_name`, `dynamodb_table_name`, `dynamodb_events_table_name`, `sns_topic_arn`, `rds_endpoint`, `asg_name` y `vpc_id`.
 
 ### 11. Permisos de la aplicación: políticas basadas en recursos
 
@@ -177,9 +200,8 @@ El rol de las instancias (`AmazonSSMRoleForInstancesQuickSetup`) **solo tiene pe
 | --- | --- | --- |
 | Bucket de documentos | bucket policy | `s3:GetObject` y `s3:PutObject` sobre `uploads/*` |
 | Bucket de artefactos | bucket policy | `s3:GetObject` sobre `releases/*` |
-| Tabla `documents` e índices | DynamoDB resource policy | `GetItem`, `PutItem`, `UpdateItem` y `Query` |
-| Tabla `document_events` | DynamoDB resource policy (B3) | `PutItem` y `Query` (append-only; sin `UpdateItem` ni `DeleteItem`) |
-| Transacciones DynamoDB | DynamoDB resource policy (B3) | `TransactWriteItems` cuando `DDB_TRANSACTIONS=true` |
+| Tabla `documents` e índices | DynamoDB resource policy | `GetItem`, `PutItem`, `UpdateItem`, `Query` (las transacciones usan estas acciones) |
+| Tabla `document_events` e índices | DynamoDB resource policy | `GetItem`, `PutItem`, `Query` (sin `UpdateItem`/`DeleteItem`: append-only; las transacciones usan estas acciones) |
 | Tópico de alertas | topic policy | `sns:Publish` (y `sns:Publish` para `cloudwatch.amazonaws.com`, por las alarmas) |
 | Parámetros `/<name_prefix>/*` | ya cubierto por el rol (`ssm:*` sobre parámetros) | `ssm:GetParameter` |
 
@@ -196,6 +218,8 @@ La app **no** debe usar operaciones de listado de cuenta (`ListBuckets`, `ListTa
 | `autoscaling:StartInstanceRefresh` → *explicit deny* de una SCP (A4, 2026-11-09) | Sin `instance_refresh`: el ASG lleva la versión del launch template en el nombre y se reemplaza sin caída (`create_before_destroy` + `wait_for_elb_capacity`; no es azul/verde estricto: los dos ASG comparten el target group durante el cambio) |
 | Sin NAT no hay STS ni internet; SSM, S3, DynamoDB, SNS y `dnf` funcionan por endpoints | `enable_nat_gateway = false`; dependencias de Node.js (`node_modules`) empaquetadas en el artefacto |
 | La topic policy de SNS no acepta `sns:*`; `s3:HeadObject` no es una acción válida | Listar acciones concretas en las políticas |
+| `dynamodb:TransactWriteItems` no es una acción IAM válida (Sandbox, B3, 2026-11-12) | No incluirla en las políticas: DynamoDB autoriza la transacción con las acciones de cada ítem |
+| **Contingencia (no observada aún):** una SCP podría denegar las escrituras transaccionales (acciones de ítem como `PutItem`/`UpdateItem`) o `dynamodb:PutResourcePolicy` | `enable_dynamodb_transactions = false` escribe estado y evento por separado; sin `PutResourcePolicy` no hay forma de dar datos al rol (el Sandbox no permite crear roles) y habría que escalar el permiso |
 
 ### 13. Desarrollo local
 
@@ -216,18 +240,22 @@ aws dynamodb create-table --endpoint-url http://localhost:8001 --region us-east-
     '[{"IndexName":"userId-createdAt","KeySchema":[{"AttributeName":"userId","KeyType":"HASH"},{"AttributeName":"createdAt","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}},
       {"IndexName":"status-createdAt","KeySchema":[{"AttributeName":"status","KeyType":"HASH"},{"AttributeName":"createdAt","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}}]'
 
-# Bitácora append-only de eventos (la API escribe la creación; el worker las transiciones)
+# Bitácora append-only (mismo esquema que aws_dynamodb_table.events)
 AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local \
 aws dynamodb create-table --endpoint-url http://localhost:8001 --region us-east-1 \
   --table-name document_events --billing-mode PAY_PER_REQUEST \
   --attribute-definitions \
       AttributeName=documentId,AttributeType=S AttributeName=eventAt,AttributeType=S \
-  --key-schema AttributeName=documentId,KeyType=HASH AttributeName=eventAt,KeyType=RANGE
+      AttributeName=userId,AttributeType=S AttributeName=eventDay,AttributeType=S \
+  --key-schema AttributeName=documentId,KeyType=HASH AttributeName=eventAt,KeyType=RANGE \
+  --global-secondary-indexes \
+    '[{"IndexName":"userId-eventAt","KeySchema":[{"AttributeName":"userId","KeyType":"HASH"},{"AttributeName":"eventAt","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}},
+      {"IndexName":"day-eventAt","KeySchema":[{"AttributeName":"eventDay","KeyType":"HASH"},{"AttributeName":"eventAt","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}}]'
 
 # Worker en local (DynamoDB Local + bucket real; SNS vacío escribe en el log)
 cd app/worker && npm ci && npm run build && node dist/worker.js
 
-docker compose down             # detener (DynamoDB Local es en memoria: la tabla se pierde)
+docker compose down             # detener (DynamoDB Local es en memoria: las tablas se pierden)
 docker compose down -v          # además borrar los datos de MySQL
 ```
 

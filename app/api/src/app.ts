@@ -32,6 +32,7 @@ const KNOWN_ROUTES: ReadonlyArray<{ pattern: RegExp; methods: readonly string[] 
   { pattern: /^\/api\/auth\/login\/?$/, methods: ['POST'] },
   { pattern: /^\/api\/documents\/?$/, methods: ['GET', 'POST'] },
   { pattern: /^\/api\/documents\/[^/]+\/?$/, methods: ['GET'] },
+  { pattern: /^\/api\/documents\/[^/]+\/events\/?$/, methods: ['GET'] },
   { pattern: /^\/api\/docs(?:\/.*)?$/, methods: ['GET'] },
   { pattern: /^\/api\/openapi\.json\/?$/, methods: ['GET'] },
 ];

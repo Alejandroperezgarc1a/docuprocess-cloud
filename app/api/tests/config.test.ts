@@ -5,6 +5,7 @@ import { loadConfig } from '../src/config.js';
 const BASE_ENV: Record<string, string> = {
   DOCS_BUCKET: 'test-docs-bucket',
   DDB_TABLE: 'documents',
+  DDB_EVENTS_TABLE: 'document_events',
   DB_HOST: '127.0.0.1',
   DB_PORT: '3306',
   DB_NAME: 'docuprocess',
@@ -23,6 +24,25 @@ function envWithout(name: string): Record<string, string> {
 describe('config', () => {
   it('falla si falta una obligatoria', () => {
     assert.throws(() => loadConfig(envWithout('DB_HOST')), /DB_HOST/);
+  });
+
+  it('falla si falta DDB_EVENTS_TABLE', () => {
+    assert.throws(() => loadConfig(envWithout('DDB_EVENTS_TABLE')), /DDB_EVENTS_TABLE/);
+  });
+
+  it('activa transacciones por defecto y acepta false', () => {
+    assert.equal(loadConfig(BASE_ENV).ddbTransactions, true);
+    assert.equal(
+      loadConfig({ ...BASE_ENV, DDB_TRANSACTIONS: 'FALSE' }).ddbTransactions,
+      false,
+    );
+  });
+
+  it('rechaza DDB_TRANSACTIONS invalido', () => {
+    assert.throws(
+      () => loadConfig({ ...BASE_ENV, DDB_TRANSACTIONS: 'si' }),
+      /DDB_TRANSACTIONS/,
+    );
   });
 
   it('falla si DOCS_BUCKET esta vacio', () => {
