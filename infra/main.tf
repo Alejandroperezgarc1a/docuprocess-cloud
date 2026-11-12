@@ -68,6 +68,18 @@ module "network" {
 
 # --- storage (B2)
 
+module "storage" {
+  source = "./modules/storage"
+
+  name_prefix                    = local.name_prefix
+  aws_region                     = var.aws_region
+  force_destroy_buckets          = var.force_destroy_buckets
+  cors_allowed_origins           = var.cors_allowed_origins
+  app_role_arn                   = local.app_role_arn
+  common_tags                    = local.common_tags
+  docs_lifecycle_expiration_days = var.docs_lifecycle_expiration_days
+}
+
 # --- dynamodb (B3)
 
 # Crea las dos tablas (documents y document_events) con sus GSIs y sus políticas de
@@ -100,15 +112,12 @@ module "rds" {
 # --- compute (A3) + userData y artefacto (A4)
 
 locals {
-  # Salidas de módulos que aún no están en main. Cuando lleguen, se cambia "" por el output:
-  #   B2: module.storage.docs_bucket_name y module.storage.artifacts_bucket_name (los DOS en el
-  #       mismo cambio: la API no arranca sin DOCS_BUCKET) y depends_on = [module.storage] en
-  #       module.compute, para que la bucket policy exista antes de que las instancias bajen el zip.
-  #   B6: module.sns.topic_arn
-  # Mientras falte alguno de los dos buckets, el userData levanta el servidor provisional.
-  docs_bucket_name      = ""
-  artifacts_bucket_name = ""
-  sns_topic_arn         = ""
+  # B2 ya está en main: la API recibe los dos buckets juntos (sin DOCS_BUCKET no arranca).
+  docs_bucket_name      = module.storage.docs_bucket_name
+  artifacts_bucket_name = module.storage.artifacts_bucket_name
+
+  # Pendiente de integrar: B6 (module.sns.topic_arn).
+  sns_topic_arn = ""
 
   # B3: la app escribe en dos tablas (estado y bitácora). Estos locales se inyectan en
   # el userData -> /etc/docuprocess.env -> la API los lee como DDB_TABLE y
@@ -142,13 +151,8 @@ resource "aws_ssm_parameter" "jwt_secret" {
 # código nuevo -> clave nueva -> userData nuevo -> versión nueva del launch template -> ASG nuevo
 # (reemplazo sin caída, ver modules/compute).
 #
-# TEMPORAL hasta B2: el count y el relleno "pendiente-b2" existen solo porque aún no hay bucket.
-# Al conectar module.storage se quitan los dos (el nombre de B2 lleva un random_id que no se
-# conoce en el plan, y un count que dependa de él falla).
 resource "aws_s3_object" "app_artifact" {
-  count = local.artifacts_bucket_name != "" ? 1 : 0
-
-  bucket = local.artifacts_bucket_name != "" ? local.artifacts_bucket_name : "pendiente-b2"
+  bucket = local.artifacts_bucket_name
   key    = "releases/app-${local.app_artifact_md5}.zip"
   source = var.app_artifact_path
   # source_hash y no etag: el zip pesa más de 5 MB y se sube en partes (multipart), así que el ETag
@@ -159,10 +163,6 @@ resource "aws_s3_object" "app_artifact" {
     precondition {
       condition     = local.app_artifact_md5 != ""
       error_message = "No existe ${var.app_artifact_path}: ejecutar ./scripts/package-app.sh antes de terraform apply."
-    }
-    precondition {
-      condition     = local.docs_bucket_name != ""
-      error_message = "Hay bucket de artefactos pero no de documentos: la API no arranca sin DOCS_BUCKET. Conectar los dos outputs de B2 juntos."
     }
   }
 }
@@ -188,7 +188,7 @@ locals {
     docs_bucket         = local.docs_bucket_name
     sns_topic_arn       = local.sns_topic_arn
     artifacts_bucket    = local.artifacts_bucket_name
-    artifact_key        = try(aws_s3_object.app_artifact[0].key, "")
+    artifact_key        = aws_s3_object.app_artifact.key
   })
 }
 
@@ -208,6 +208,10 @@ module "compute" {
   asg_max_size          = var.asg_max_size
   asg_desired_capacity  = var.asg_desired_capacity
   user_data             = local.user_data
+
+  # La bucket policy de artifacts se gestiona mediante el depends_on del output
+  # artifacts_bucket_name; quitar depends_on de módulo evita que cualquier cambio
+  # en storage difiera los data sources (AMI, tags) a apply time y reemplace el ASG.
 }
 
 # --- cdn (B5)
