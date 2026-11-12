@@ -1,6 +1,6 @@
 # DocuProcess Cloud
 
-DocuProcess Cloud es un SaaS que procesa de forma asíncrona los documentos e imágenes que suben sus usuarios. El usuario sube el archivo directamente a S3 mediante una URL prefirmada; un worker lo toma de una cola lógica en DynamoDB, extrae sus metadatos (tamaño, tipo MIME, SHA-256, número de páginas o dimensiones) y avisa por SNS cuando termina. La plataforma se despliega en AWS (us-east-1) con Terraform dentro del Sandbox de AWS Academy, respetando sus restricciones: sin IAM propio, sin Lambda, con instancias y bases de datos pequeñas y con credenciales temporales.
+DocuProcess Cloud es un SaaS que procesa de forma asíncrona los documentos e imágenes que suben sus usuarios. El usuario sube el archivo directamente a S3 mediante una URL prefirmada; un worker lo toma de una cola lógica en DynamoDB, extrae sus metadatos (tamaño, tipo MIME, SHA-256, número de páginas o dimensiones), registra cada cambio de estado en una bitácora auditable y avisa por SNS cuando termina. La plataforma se despliega en AWS (us-east-1) con Terraform dentro del Sandbox de AWS Academy, respetando sus restricciones: sin IAM propio, sin Lambda, con instancias y bases de datos pequeñas y con credenciales temporales.
 
 Proyecto final del curso Infraestructura III, Universidad ICESI.
 
@@ -33,7 +33,7 @@ flowchart LR
         s3front[("S3 frontend")]
         s3docs[("S3 documentos")]
         s3art[("S3 artefactos")]
-        ddb[("DynamoDB documents")]
+        ddb[("DynamoDB documents + document_events")]
         sns["SNS alertas"]
         cw["CloudWatch alarmas"]
         trail["CloudTrail"]
@@ -59,7 +59,7 @@ flowchart LR
 ## Stack
 
 - **Infraestructura:** Terraform y AWS (VPC, ALB, EC2 Auto Scaling, RDS MySQL, S3, DynamoDB, SNS, CloudFront, CloudWatch y CloudTrail).
-- **Backend:** Node.js 24 + TypeScript (API REST con Express 5; worker de procesamiento previsto en Node.js) como servicios systemd en Amazon Linux 2023.
+- **Backend:** Node.js 24 + TypeScript (API REST con Express 5 y worker asíncrono) como servicios systemd en Amazon Linux 2023.
 - **Frontend:** HTML, CSS y JavaScript con Vite; build estático servido por CloudFront.
 - **Desarrollo local:** Docker Compose con MySQL y DynamoDB Local.
 - **Integración continua:** GitHub Actions.
@@ -69,16 +69,16 @@ flowchart LR
 - Documentación interactiva (Swagger UI): `/api/docs`
 - Especificación OpenAPI 3.0: `/api/openapi.json`
 
-## Estructura del repositorio (prevista)
+## Estructura del repositorio
 
 ```
 infra/              módulo raíz de Terraform
 infra/modules/      network, compute, rds, storage, dynamodb, sns, cdn, monitoring
 app/api/            API REST en Node.js + TypeScript (src/, tests/)
-app/worker/         worker de procesamiento asíncrono (pendiente, Node.js)
+app/worker/         worker de procesamiento asíncrono en Node.js + TypeScript
 frontend/           sitio estático
 scripts/            userData, empaquetado, publicación del frontend y prueba de carga
-docs/               arquitectura, RDS vs. DynamoDB y guía de despliegue
+docs/               arquitectura, RDS vs. DynamoDB, trazabilidad y guía de despliegue
 ```
 
 ## Equipo y responsabilidades
@@ -113,7 +113,7 @@ terraform -chdir=infra apply
 cp .env.example .env          # completar DB_PASSWORD, MYSQL_ROOT_PASSWORD, JWT_SECRET y DOCS_BUCKET
 docker compose up -d
 
-# Crear la tabla documents con el comando de docs/architecture.md, sección 13.
+# Crear las tablas documents y document_events con los comandos de docs/architecture.md, sección 13.
 
 cd app/api
 npm ci
@@ -125,6 +125,26 @@ PORT=8000 WEB_CONCURRENCY=2 node dist/server.js
 En desarrollo con recarga automática: `npm run dev`.
 
 Swagger UI: `http://localhost:8000/api/docs`.
+
+### Worker
+
+```bash
+# Mismas variables que la API (DDB_TABLE, DDB_EVENTS_TABLE, DOCS_BUCKET, AWS_REGION).
+# DDB_ENDPOINT_URL=http://localhost:8001 apunta a DynamoDB Local; SNS_TOPIC_ARN vacío deja la
+# notificación en el log. Requiere las tablas documents y document_events (sección 13 de
+# docs/architecture.md).
+cd app/worker
+npm ci
+npm run build
+set -a; . ../../.env; set +a
+node dist/worker.js
+```
+
+Pruebas unitarias: `npm test` (28). Integración con DynamoDB Local y S3 real:
+`RUN_INTEGRATION=1 DOCS_BUCKET=<bucket> npm run test:integration` (requiere `npm run build`).
+Cubre 20 documentos con dos workers, objeto ausente dentro del timeout y objeto vencido
+(`FAILED "upload timeout"`). Si defines `SNS_TOPIC_ARN`, además verifica la publicación SNS
+por cada `DONE`/`FAILED`; sin tópico valida el registro `sns_skipped`.
 
 ### Frontend
 

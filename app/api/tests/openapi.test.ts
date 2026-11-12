@@ -15,6 +15,8 @@ describe('openapi', () => {
     assert.ok(response.body.paths['/api/ready']);
     assert.ok(response.body.paths['/api/auth/register']);
     assert.ok(response.body.paths['/api/documents']);
+    assert.ok(response.body.paths['/api/documents/{documentId}/events']);
+    assert.ok(response.body.components.schemas.DocumentEvent);
     assert.ok(response.body.components.securitySchemes.bearerAuth);
   });
 

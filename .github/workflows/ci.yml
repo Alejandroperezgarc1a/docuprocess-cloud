@@ -151,7 +151,7 @@ jobs:
           tpl="$PWD/scripts/user-data.sh.tftpl"
           work="$(mktemp -d)"
           for key in releases/app-ci.zip ""; do
-            vars="aws_region=\"us-east-1\", db_password_param=\"/p/db\", jwt_secret_param=\"/p/jwt\", db_password_version=1, jwt_secret_version=1, db_host=\"db.example\", db_port=3306, db_name=\"docuprocess\", db_user=\"docuadmin\", ddb_table=\"documents\", docs_bucket=\"docs\", sns_topic_arn=\"\", artifacts_bucket=\"artifacts\", artifact_key=\"$key\""
+            vars="aws_region=\"us-east-1\", db_password_param=\"/p/db\", jwt_secret_param=\"/p/jwt\", db_password_version=1, jwt_secret_version=1, db_host=\"db.example\", db_port=3306, db_name=\"docuprocess\", db_user=\"docuadmin\", ddb_table=\"documents\", ddb_events_table=\"document_events\", ddb_transactions=\"true\", docs_bucket=\"docs\", sns_topic_arn=\"\", artifacts_bucket=\"artifacts\", artifact_key=\"$key\", worker_poll_seconds=5, worker_batch_size=10, upload_timeout_minutes=15, max_file_mb=10"
             echo "templatefile(\"$tpl\", {$vars})" \
               | (cd "$work" && terraform console) | sed '1{/^<<EOT$/d};${/^EOT$/d}' > "$work/ud.sh"
             echo "--- variante: ${key:-provisional} ($(wc -l < "$work/ud.sh") líneas)"
@@ -178,6 +178,7 @@ jobs:
           test "$first" = "$second" || { echo "::error::El zip no es determinista"; exit 1; }
           list="$(unzip -Z1 dist/docuprocess-app.zip)"
           grep -q '^api/dist/server.js$' <<<"$list" || { echo "::error::Falta api/dist/server.js"; exit 1; }
+          grep -q '^worker/dist/worker.js$' <<<"$list" || { echo "::error::Falta worker/dist/worker.js"; exit 1; }
           if grep -E '\.map$|^[^/]+/(src|tests)/|node_modules/(typescript|tsx|supertest|@types)/' <<<"$list"; then
             echo "::error::El zip trae fuentes, mapas o dependencias de desarrollo"; exit 1
           fi
