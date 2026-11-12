@@ -4,7 +4,7 @@
 
 Worker en **Node.js 24 + TypeScript** empacado con la API (A4) y ejecutado por
 `docuprocess-worker.service`. No crea infraestructura: consume el bucket de B2, las tablas de B3
-y el tópico de B4.
+y el tópico de B6.
 
 - Consulta el GSI `status-createdAt` con `status = PENDING`, orden ascendente y un límite de
   `WORKER_BATCH_SIZE * 3` para reducir el bloqueo por documentos que aún no tienen archivo.
@@ -42,22 +42,47 @@ npm run typecheck
 npm test
 npm run build
 
-# Integración: DynamoDB Local + bucket real. Crea 20 PENDING, levanta dos workers y verifica
-# 20 DONE con un evento PROCESSING y uno DONE por documento.
-RUN_INTEGRATION=1 DOCS_BUCKET=<bucket> npm run test:integration
+# Integración: DynamoDB Local + bucket real (+ SNS opcional). Levanta dos workers y valida:
+#   - 20 PENDING -> 20 DONE exactamente una vez (eventos PROCESSING y DONE)
+#   - objeto ausente dentro del timeout: se salta y sigue PENDING
+#   - objeto ausente vencido: FAILED "upload timeout" con evento FAILED
+#   - con SNS_TOPIC_ARN: publica por cada DONE/FAILED; sin tópico: registra sns_skipped
+RUN_INTEGRATION=1 DOCS_BUCKET=<bucket> [SNS_TOPIC_ARN=<topic>] npm run test:integration
 ```
 
 La integración asume las tablas `documents` y `document_events` creadas (ver
 `docs/architecture.md`, sección 13).
+
+## Resultados de validación (2026-11-11)
+
+Validado contra **DynamoDB Local + bucket real + tópico SNS temporal** en AWS Academy, y también
+con `SNS_TOPIC_ARN` vacío para cubrir la rama `sns_skipped`:
+
+- `npm run typecheck`, `npm test` (28/28) y `npm run build`: OK.
+- `npm run test:integration`: **2/2** en verde.
+  - Dos workers sobre 20 documentos: 20 `DONE`, sin dobles claims, eventos `PROCESSING` + `DONE`.
+  - Objeto ausente reciente: se salta y permanece `PENDING` (`upload_pending`).
+  - Objeto ausente vencido: `FAILED "upload timeout"` y evento `FAILED` con `actor="worker"`.
+  - SNS: `sns_published` por cada `DONE`/`FAILED` con topic real; `sns_skipped` sin topic.
+- `terraform fmt -check -recursive` y `terraform validate`: OK.
+- Render del userData en sus dos variantes + ShellCheck: OK.
+- `package-app.sh`: determinista (mismo md5 en dos corridas); el zip incluye
+  `worker/dist/worker.js` y no trae fuentes, mapas ni dependencias de desarrollo.
+
+**Límites de la validación:** la entrega de correo no se pudo comprobar porque la suscripción a
+`ingesoftv@gmail.com` sigue pendiente de confirmación (y el Sandbox deniega `sqs:CreateQueue`
+para verificar SNS→SQS). Tampoco se probaron `document_events`/`TransactWriteItems` contra
+DynamoDB de AWS ni el cableado de `module.sns.topic_arn`, porque B3 y B6 aún no están fusionados
+en la rama de B5.
 
 ## Pendientes de integración
 
 - **B3:** debe fusionarse para que existan `document_events` y la política que permite
   `TransactWriteItems`. Mientras tanto el worker puede ejecutarse con `DDB_TRANSACTIONS=false`
   contra DynamoDB Local.
-- **B4:** el tópico SNS aún no está en `main`; `SNS_TOPIC_ARN` está vacío y el worker registra la
-  notificación en el log. El criterio de “llega un correo por documento” se valida cuando B4
-  cablee `module.sns.topic_arn`.
+- **B6:** el tópico SNS aún no está en `main`; `SNS_TOPIC_ARN` está vacío y el worker registra la
+  notificación en el log. El criterio de “llega un correo por documento” se valida cuando B6
+  cablee `module.sns.topic_arn` y se confirme la suscripción de correo.
 - **Recuperación de `PROCESSING`:** no es automática. Si una instancia muere después del claim,
   el ítem queda `PROCESSING`; el runbook manual consulta el GSI, verifica que no haya un worker
   vivo y vuelve a `PENDING` con un `Update` condicional, dejando el evento correspondiente.

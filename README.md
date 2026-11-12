@@ -140,8 +140,11 @@ set -a; . ../../.env; set +a
 node dist/worker.js
 ```
 
-Pruebas unitarias: `npm test`. Integración con DynamoDB Local y S3 real:
+Pruebas unitarias: `npm test` (28). Integración con DynamoDB Local y S3 real:
 `RUN_INTEGRATION=1 DOCS_BUCKET=<bucket> npm run test:integration` (requiere `npm run build`).
+Cubre 20 documentos con dos workers, objeto ausente dentro del timeout y objeto vencido
+(`FAILED "upload timeout"`). Si defines `SNS_TOPIC_ARN`, además verifica la publicación SNS
+por cada `DONE`/`FAILED`; sin tópico valida el registro `sns_skipped`.
 
 ### Frontend
 
