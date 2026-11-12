@@ -69,6 +69,17 @@ con `SNS_TOPIC_ARN` vacío para cubrir la rama `sns_skipped`:
 - `package-app.sh`: determinista (mismo md5 en dos corridas); el zip incluye
   `worker/dist/worker.js` y no trae fuentes, mapas ni dependencias de desarrollo.
 
+### Revalidación (2026-11-11)
+
+Se repitió la validación sobre el mismo commit `3786dc1` para confirmar que los resultados son
+reproducibles:
+
+- `npm run typecheck` y `npm test`: OK (28/28).
+- Integración con SNS temporal: **2/2** (26.1 s); sin `SNS_TOPIC_ARN`: **2/2** (20.8 s).
+- `terraform fmt`/`validate`, userData + ShellCheck y `package-app.sh`: OK; el zip conservó el
+  md5 `21e883e83e1519b50cd203eb89b64351`.
+- Los recursos temporales (bucket, tópico y DynamoDB Local) se eliminaron al terminar.
+
 **Límites de la validación:** la entrega de correo no se pudo comprobar porque la suscripción a
 `ingesoftv@gmail.com` sigue pendiente de confirmación (y el Sandbox deniega `sqs:CreateQueue`
 para verificar SNS→SQS). Tampoco se probaron `document_events`/`TransactWriteItems` contra
