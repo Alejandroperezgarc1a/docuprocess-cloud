@@ -437,6 +437,20 @@ describe('documents', () => {
     assert.equal(response.status, 401);
   });
 
+  it('la bitacora solo acepta GET', async () => {
+    // La ruta existe en KNOWN_ROUTES: un metodo no soportado debe dar 405, no 404.
+    const context = makeApp();
+    const { headers } = await registerAndLogin(context.app);
+    const created = await createDocument(context, headers);
+
+    const response = await request(context.app)
+      .post(`/api/documents/${String(created.body.documentId)}/events`)
+      .set(headers);
+
+    assert.equal(response.status, 405);
+    assert.equal(response.body.error, 'method_not_allowed');
+  });
+
   it('503 si DynamoDB falla al leer la bitacora', async () => {
     // 503 (no 500): la API distingue errores de dependencia de errores internos.
     const context = makeApp();
