@@ -68,13 +68,22 @@ module "network" {
 
 # --- storage (B2)
 
+locals {
+  # El dominio de CloudFront se suma a los orígenes locales para no romper el
+  # desarrollo con Vite y la subida directa a S3 con URL prefirmada.
+  storage_cors_allowed_origins = distinct(concat(
+    var.cors_allowed_origins,
+    ["https://${module.cdn.cloudfront_domain_name}"]
+  ))
+}
+
 module "storage" {
   source = "./modules/storage"
 
   name_prefix                    = local.name_prefix
   aws_region                     = var.aws_region
   force_destroy_buckets          = var.force_destroy_buckets
-  cors_allowed_origins           = var.cors_allowed_origins
+  cors_allowed_origins           = local.storage_cors_allowed_origins
   app_role_arn                   = local.app_role_arn
   common_tags                    = local.common_tags
   docs_lifecycle_expiration_days = var.docs_lifecycle_expiration_days
@@ -196,5 +205,15 @@ module "compute" {
 }
 
 # --- cdn (B5)
+
+module "cdn" {
+  source = "./modules/cdn"
+
+  name_prefix                          = local.name_prefix
+  frontend_bucket_name                 = module.storage.frontend_bucket_name
+  frontend_bucket_arn                  = module.storage.frontend_bucket_arn
+  frontend_bucket_regional_domain_name = module.storage.frontend_bucket_regional_domain_name
+  alb_dns_name                         = module.compute.alb_dns_name
+}
 
 # --- monitoring (B9)
