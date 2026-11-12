@@ -86,6 +86,18 @@ module "storage" {
 
 # --- dynamodb (B3)
 
+# Crea las dos tablas (documents y document_events) con sus GSIs y sus políticas de
+# recurso. El rol de las instancias solo tiene SSM; por eso el acceso a datos se concede
+# con políticas basadas en el recurso (ver modules/dynamodb/main.tf), no con IAM.
+module "dynamodb" {
+  source = "./modules/dynamodb"
+
+  table_name                    = var.dynamodb_table_name
+  events_table_name             = var.document_events_table_name
+  app_role_arn                  = local.app_role_arn
+  enable_point_in_time_recovery = var.enable_point_in_time_recovery
+}
+
 # --- sns (B6)
 
 module "sns" {
@@ -116,8 +128,14 @@ locals {
   docs_bucket_name      = module.storage.docs_bucket_name
   artifacts_bucket_name = module.storage.artifacts_bucket_name
 
-  # B3 sigue pendiente (module.dynamodb.table_name); el tópico de alertas ya está integrado.
+  # B3 ya está integrado; el tópico de alertas de B6 alimenta al worker.
   sns_topic_arn = module.sns.topic_arn
+
+  # B3: la app escribe en dos tablas (estado y bitácora). Estos locales se inyectan en
+  # el userData -> /etc/docuprocess.env -> la API los lee como DDB_TABLE y
+  # DDB_EVENTS_TABLE al arrancar.
+  ddb_table        = module.dynamodb.table_name
+  ddb_events_table = module.dynamodb.events_table_name
 
   # md5 del zip, o "" si no existe (la precondición de app_artifact explica qué hacer).
   app_artifact_md5 = fileexists(var.app_artifact_path) ? filemd5(var.app_artifact_path) : ""
@@ -167,20 +185,26 @@ locals {
   # Terraform los cree antes que el launch template. Sus versiones (no los valores) entran al
   # userData: rotar un secreto cambia la versión y reemplaza las instancias.
   user_data = templatefile("${path.module}/../scripts/user-data.sh.tftpl", {
-    aws_region          = var.aws_region
-    db_password_param   = aws_ssm_parameter.db_password.name
-    jwt_secret_param    = aws_ssm_parameter.jwt_secret.name
-    db_password_version = aws_ssm_parameter.db_password.version
-    jwt_secret_version  = aws_ssm_parameter.jwt_secret.version
-    db_host             = module.rds.db_address
-    db_port             = module.rds.db_port
-    db_name             = var.db_name
-    db_user             = var.db_username
-    ddb_table           = var.dynamodb_table_name
-    docs_bucket         = local.docs_bucket_name
-    sns_topic_arn       = local.sns_topic_arn
-    artifacts_bucket    = local.artifacts_bucket_name
-    artifact_key        = aws_s3_object.app_artifact.key
+    aws_region             = var.aws_region
+    db_password_param      = aws_ssm_parameter.db_password.name
+    jwt_secret_param       = aws_ssm_parameter.jwt_secret.name
+    db_password_version    = aws_ssm_parameter.db_password.version
+    jwt_secret_version     = aws_ssm_parameter.jwt_secret.version
+    db_host                = module.rds.db_address
+    db_port                = module.rds.db_port
+    db_name                = var.db_name
+    db_user                = var.db_username
+    ddb_table              = local.ddb_table
+    ddb_events_table       = local.ddb_events_table
+    ddb_transactions       = var.enable_dynamodb_transactions ? "true" : "false"
+    docs_bucket            = local.docs_bucket_name
+    sns_topic_arn          = local.sns_topic_arn
+    artifacts_bucket       = local.artifacts_bucket_name
+    artifact_key           = aws_s3_object.app_artifact.key
+    worker_poll_seconds    = var.worker_poll_seconds
+    worker_batch_size      = var.worker_batch_size
+    upload_timeout_minutes = var.upload_timeout_minutes
+    max_file_mb            = var.max_file_mb
   })
 }
 
@@ -199,6 +223,7 @@ module "compute" {
   asg_min_size          = var.asg_min_size
   asg_max_size          = var.asg_max_size
   asg_desired_capacity  = var.asg_desired_capacity
+  cpu_target_value      = var.cpu_target_value
   user_data             = local.user_data
 
   # La bucket policy de artifacts se gestiona mediante el depends_on del output

@@ -52,6 +52,22 @@ describe('documents', () => {
     assert.equal(item.s3Key, body.key);
     assert.equal(item.createdAt, item.updatedAt);
     assert.ok(item.createdAt.endsWith('Z'));
+
+    // La bitacora nace con el evento inicial, escrito en la misma operacion que el documento.
+    const events = context.aws.events.filter(
+      (event) => event.documentId === documentId,
+    );
+    assert.equal(events.length, 1);
+    const initial = events[0];
+    assert.ok(initial);
+    assert.equal(initial.toStatus, 'PENDING');
+    assert.equal(initial.fromStatus, undefined);
+    assert.equal(initial.actor, 'api');
+    assert.equal(initial.userId, String(userId));
+    assert.equal(initial.eventDay, item.createdAt.slice(0, 10));
+    assert.ok(initial.eventAt.startsWith(item.createdAt));
+    assert.match(initial.eventAt, /\.\d{3}Z#[0-9a-f]{6}$/);
+    assert.equal(initial.schemaVersion, 1);
   });
 
   it('rechaza un tipo no permitido', async () => {
@@ -332,6 +348,132 @@ describe('documents', () => {
 
     const response = await request(context.app)
       .get(`/api/documents/${String(created.body.documentId)}`)
+      .set(headers);
+
+    assert.equal(response.status, 503);
+    assert.equal(response.body.error, 'storage_unavailable');
+  });
+
+  it('devuelve la bitacora en orden ascendente', async () => {
+    const context = makeApp();
+    const { headers, userId } = await registerAndLogin(context.app);
+    const created = await createDocument(context, headers);
+    const documentId = created.body.documentId as string;
+
+    // El evento inicial usa la hora real; los siguientes se calculan a partir de ella para que
+    // el orden sea determinista (no se puede asumir una hora fija).
+    const initialAt = context.aws.events[0]?.eventAt ?? '';
+    const at = (offsetMs: number, suffix: string) =>
+      `${new Date(new Date(initialAt.slice(0, 24)).getTime() + offsetMs).toISOString()}#${suffix}`;
+
+    context.aws.events.push({
+      documentId,
+      eventAt: at(2000, 'ffffff'),
+      eventId: '22222222-2222-4222-8222-222222222222',
+      userId: String(userId),
+      eventDay: '2026-11-11',
+      fromStatus: 'PROCESSING',
+      toStatus: 'DONE',
+      actor: 'worker',
+      schemaVersion: 1,
+    });
+    context.aws.events.push({
+      documentId,
+      eventAt: at(1000, 'aaaaaa'),
+      eventId: '11111111-1111-4111-8111-111111111111',
+      userId: String(userId),
+      eventDay: '2026-11-11',
+      fromStatus: 'PENDING',
+      toStatus: 'PROCESSING',
+      actor: 'worker',
+      schemaVersion: 1,
+    });
+
+    const response = await request(context.app)
+      .get(`/api/documents/${documentId}/events`)
+      .set(headers);
+
+    assert.equal(response.status, 200);
+    const items = response.body.items as Array<{ toStatus: string }>;
+    assert.deepEqual(
+      items.map((event) => event.toStatus),
+      ['PENDING', 'PROCESSING', 'DONE'],
+    );
+  });
+
+  it('404 en la bitacora de otro usuario, inexistente o mal formada', async () => {
+    // 404 en los tres casos: el API no revela si el documento existe o pertenece a otro.
+    const context = makeApp();
+    const userA = await registerAndLogin(context.app, 'a@example.com');
+    const userB = await registerAndLogin(context.app, 'b@example.com');
+    const created = await createDocument(context, userA.headers);
+    const documentId = created.body.documentId as string;
+
+    const responses = [
+      await request(context.app)
+        .get(`/api/documents/${documentId}/events`)
+        .set(userB.headers),
+      await request(context.app)
+        .get(`/api/documents/${randomUUID()}/events`)
+        .set(userA.headers),
+      await request(context.app)
+        .get('/api/documents/no-es-uuid/events')
+        .set(userA.headers),
+    ];
+
+    for (const response of responses) {
+      assert.equal(response.status, 404);
+      assert.equal(response.body.error, 'not_found');
+    }
+  });
+
+  it('401 sin token en la bitacora', async () => {
+    const context = makeApp();
+
+    const response = await request(context.app).get(
+      `/api/documents/${randomUUID()}/events`,
+    );
+
+    assert.equal(response.status, 401);
+  });
+
+  it('la bitacora solo acepta GET', async () => {
+    // La ruta existe en KNOWN_ROUTES: un metodo no soportado debe dar 405, no 404.
+    const context = makeApp();
+    const { headers } = await registerAndLogin(context.app);
+    const created = await createDocument(context, headers);
+
+    const response = await request(context.app)
+      .post(`/api/documents/${String(created.body.documentId)}/events`)
+      .set(headers);
+
+    assert.equal(response.status, 405);
+    assert.equal(response.body.error, 'method_not_allowed');
+  });
+
+  it('503 si DynamoDB falla al leer la bitacora', async () => {
+    // 503 (no 500): la API distingue errores de dependencia de errores internos.
+    const context = makeApp();
+    const { headers } = await registerAndLogin(context.app);
+    const created = await createDocument(context, headers);
+    context.aws.failEventsQuery = true;
+
+    const response = await request(context.app)
+      .get(`/api/documents/${String(created.body.documentId)}/events`)
+      .set(headers);
+
+    assert.equal(response.status, 503);
+    assert.equal(response.body.error, 'storage_unavailable');
+  });
+
+  it('503 si falla el documento al leer la bitacora', async () => {
+    const context = makeApp();
+    const { headers } = await registerAndLogin(context.app);
+    const created = await createDocument(context, headers);
+    context.aws.failGet = true;
+
+    const response = await request(context.app)
+      .get(`/api/documents/${String(created.body.documentId)}/events`)
       .set(headers);
 
     assert.equal(response.status, 503);

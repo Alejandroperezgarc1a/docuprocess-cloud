@@ -22,3 +22,8 @@ output "launch_template_id" {
   description = "ID del launch template."
   value       = aws_launch_template.app.id
 }
+
+output "scaling_policy_name" {
+  description = "Política de target tracking por CPU (A7)."
+  value       = aws_autoscaling_policy.cpu.name
+}
