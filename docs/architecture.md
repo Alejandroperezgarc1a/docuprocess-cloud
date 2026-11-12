@@ -268,8 +268,8 @@ DynamoDB Local acepta cualquier credencial; las de arriba (`local`) evitan usar 
 - **Producción:** CloudFront sirve `frontend/dist/` en la raíz y enruta `/api/*` al ALB. El frontend usa rutas relativas. El behavior de `/api/*` no debe cachear y debe reenviar `Authorization`, `Content-Type` y `Origin`.
 - **Build:** `npm ci && npm run build` en `frontend/`; se publica `frontend/dist/`, no el código fuente.
 - **CORS del bucket de documentos:** el `PUT` de la URL prefirmada va directo del navegador a S3. El bucket debe permitir `PUT`, `GET` y `HEAD` desde `http://localhost:5500`, `http://127.0.0.1:5500` y el dominio de CloudFront, con `AllowedHeaders: ["Content-Type"]`.
-- **Orígenes CORS en B2:** el módulo usa orígenes explícitos (`localhost:5500` y `127.0.0.1:5500`). B5 debe añadir el dominio de CloudFront sin pasar `module.cdn.cloudfront_domain_name` a `module.storage`, porque eso crea un ciclo; la regla CORS puede gestionarse en la raíz después de crear ambos módulos.
+- **Orígenes CORS en B2/B7:** el módulo usa orígenes explícitos (`localhost:5500` y `127.0.0.1:5500`). B7 añade `https://${module.cdn.cloudfront_domain_name}` a `module.storage.cors_allowed_origins` conservando los orígenes locales para el desarrollo. No hay ciclo: el bucket (salida de storage) no depende de la regla CORS; la regla depende del dominio de CloudFront y CloudFront depende del bucket.
 - **Health del ALB:** el target group debe apuntar a `GET /api/health` (superficial: una caída de RDS no recicla las instancias).
 - **Readiness al arrancar:** el userData espera `GET /api/ready` (MySQL) antes de dar por lista la instancia. Si no responde, apaga la API: la instancia nunca queda healthy, el despliegue no avanza y el ASG anterior sigue atendiendo.
 
-El CORS del bucket y el behavior de CloudFront se implementan en B2/B5; el health check en A3.
+El CORS del bucket y el behavior de CloudFront se implementan en B2/B7; el health check en A3.
