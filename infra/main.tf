@@ -82,7 +82,15 @@ module "storage" {
 
 # --- dynamodb (B3)
 
-# --- sns (B4)
+# --- sns (B6)
+
+module "sns" {
+  source = "./modules/sns"
+
+  name_prefix  = local.name_prefix
+  alert_email  = var.alert_email
+  app_role_arn = local.app_role_arn
+}
 
 # --- rds (A5)
 
@@ -104,8 +112,8 @@ locals {
   docs_bucket_name      = module.storage.docs_bucket_name
   artifacts_bucket_name = module.storage.artifacts_bucket_name
 
-  # Pendiente de integrar: B3 (module.dynamodb.table_name) y B6 (module.sns.topic_arn).
-  sns_topic_arn = ""
+  # B3 sigue pendiente (module.dynamodb.table_name); el tópico de alertas ya está integrado.
+  sns_topic_arn = module.sns.topic_arn
 
   # md5 del zip, o "" si no existe (la precondición de app_artifact explica qué hacer).
   app_artifact_md5 = fileexists(var.app_artifact_path) ? filemd5(var.app_artifact_path) : ""
