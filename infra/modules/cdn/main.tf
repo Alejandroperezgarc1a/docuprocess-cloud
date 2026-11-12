@@ -1,4 +1,4 @@
-# Módulo CDN (B5): un solo dominio HTTPS de CloudFront para el frontend y la API.
+# Módulo CDN (B7): un solo dominio HTTPS de CloudFront para el frontend y la API.
 # El frontend se sirve desde S3 con OAC; /api/* se reenvía al ALB sin caché.
 
 locals {

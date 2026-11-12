@@ -191,7 +191,7 @@ aws s3api put-bucket-cors \
 ```
 
 En Terraform esto corresponde al módulo de storage (B2) y al dominio de
-CloudFront (B5).
+CloudFront (B7).
 
 ## Cómo trabajamos
 

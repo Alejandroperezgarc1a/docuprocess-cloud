@@ -228,7 +228,7 @@ module "compute" {
   # en storage difiera los data sources (AMI, tags) a apply time y reemplace el ASG.
 }
 
-# --- cdn (B5)
+# --- cdn (B7)
 
 module "cdn" {
   source = "./modules/cdn"

@@ -56,17 +56,17 @@ output "artifacts_bucket_name" {
 }
 
 output "alb_dns_name" {
-  description = "DNS público del ALB (A3). Con CloudFront (B5) el acceso normal es por app_url."
+  description = "DNS público del ALB (A3). Con CloudFront (B7) el acceso normal es por app_url."
   value       = module.compute.alb_dns_name
 }
 
 output "cloudfront_domain_name" {
-  description = "Dominio por defecto de CloudFront (B5); sirve el frontend y la API."
+  description = "Dominio por defecto de CloudFront (B7); sirve el frontend y la API."
   value       = module.cdn.cloudfront_domain_name
 }
 
 output "cloudfront_distribution_id" {
-  description = "ID de la distribución de CloudFront (B5); se usa para invalidar la caché (B8)."
+  description = "ID de la distribución de CloudFront (B7); se usa para invalidar la caché (B8)."
   value       = module.cdn.distribution_id
 }
 
