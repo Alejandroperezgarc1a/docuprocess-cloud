@@ -80,6 +80,21 @@ output "cloudtrail_arn" {
   value       = module.monitoring.cloudtrail_arn
 }
 
+output "cloudfront_domain_name" {
+  description = "Dominio por defecto de CloudFront (B7); sirve el frontend y la API."
+  value       = module.cdn.cloudfront_domain_name
+}
+
+output "cloudfront_distribution_id" {
+  description = "ID de la distribución de CloudFront (B7); se usa para invalidar la caché (B8)."
+  value       = module.cdn.distribution_id
+}
+
+output "app_url" {
+  description = "URL HTTPS pública de la aplicación (frontend y API bajo el mismo dominio)."
+  value       = "https://${module.cdn.cloudfront_domain_name}"
+}
+
 output "asg_name" {
   description = "Auto Scaling Group de la app (A3)."
   value       = module.compute.asg_name
