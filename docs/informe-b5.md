@@ -81,7 +81,7 @@ reproducibles:
 - Los recursos temporales (bucket, tópico y DynamoDB Local) se eliminaron al terminar.
 
 **Límites de la validación:** la entrega de correo no se pudo comprobar porque la suscripción a
-`ingesoftv@gmail.com` sigue pendiente de confirmación (y el Sandbox deniega `sqs:CreateQueue`
+`<TEAM_EMAIL>` sigue pendiente de confirmación (y el Sandbox deniega `sqs:CreateQueue`
 para verificar SNS→SQS). Tampoco se probaron `document_events`/`TransactWriteItems` contra
 DynamoDB de AWS ni el cableado de `module.sns.topic_arn`, porque B3 y B6 aún no están fusionados
 en la rama de B5.
