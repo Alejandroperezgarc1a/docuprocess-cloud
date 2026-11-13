@@ -1,6 +1,233 @@
 # Arquitectura de DocuProcess Cloud
 
-> Las secciones de diagrama detallado, flujo de un documento y tabla de componentes se completan en la tarea B10. Este documento empieza con los **contratos de integración** (C1): la fuente de verdad que comparten la API, el worker, el frontend y Terraform. Todo cambio a un contrato se hace con un PR que actualice esta sección.
+> Este documento tiene dos partes. La **vista general** (B11) describe la plataforma desplegada: diagrama de componentes, flujo de un documento, inventario de recursos por módulo de Terraform, permisos de la aplicación y restricciones del Sandbox. Los **contratos de integración** (C1) son la fuente de verdad que comparten la API, el worker, el frontend y Terraform; todo cambio a un contrato se hace con un PR que actualice esa sección.
+
+## Vista general
+
+### Diagrama de arquitectura en AWS
+
+![Arquitectura de DocuProcess Cloud en AWS](img/docuprocess-aws.png)
+
+Vista con los íconos oficiales de AWS: región, VPC, las dos zonas de disponibilidad con sus subredes públicas y privadas, el Auto Scaling group y los servicios administrados. La fuente editable está en [`img/docuprocess-aws.drawio`](img/docuprocess-aws.drawio) (se abre con draw.io / diagrams.net). El diagrama Mermaid de la sección siguiente muestra el mismo despliegue con el detalle de puertos y security groups.
+
+### Diagrama de componentes
+
+Todo lo que aparece en el diagrama lo crea Terraform (`infra/`), salvo el usuario, el correo del equipo y el historial de eventos de CloudTrail, que AWS mantiene en cada cuenta sin recurso propio. Las líneas punteadas son tráfico de métricas o de subida directa.
+
+```mermaid
+flowchart TB
+    user["Usuario - navegador"]
+    mail["Correo del equipo"]
+
+    cf["CloudFront - certificado por defecto, redirect a HTTPS"]
+
+    subgraph region["AWS us-east-1"]
+        subgraph vpc["VPC 10.0.0.0/16"]
+            igw["Internet Gateway"]
+
+            subgraph pub["Subredes públicas 10.0.1.0/24 AZ a y 10.0.2.0/24 AZ b"]
+                alb["ALB listener HTTP 80 - SG alb: 80 desde 0.0.0.0/0"]
+            end
+
+            subgraph priv["Subredes privadas 10.0.11.0/24 AZ a y 10.0.12.0/24 AZ b - sin NAT"]
+                subgraph asg["ASG 2 a 4 instancias - target tracking CPU 60 por ciento"]
+                    ec2a["EC2 AZ a - API 8000 + worker"]
+                    ec2b["EC2 AZ b - API 8000 + worker"]
+                end
+                rds[("RDS MySQL 8.0 db.t3.micro Single-AZ - SG rds: 3306 desde SG app")]
+                ifep["Interface endpoints ssm, ssmmessages, ec2messages, sns - SG endpoints: 443 desde la VPC"]
+            end
+
+            gwep["Gateway endpoints S3 y DynamoDB - rutas en la tabla privada"]
+        end
+
+        s3front[("S3 frontend - privado, solo OAC")]
+        s3docs[("S3 documentos - uploads/")]
+        s3art[("S3 artefactos - releases/, versionado")]
+        ddbdoc[("DynamoDB documents - GSI userId-createdAt y status-createdAt")]
+        ddbevt[("DynamoDB document_events - GSI userId-eventAt y day-eventAt")]
+        ssmps["SSM Parameter Store - db_password y jwt_secret"]
+        sns["SNS alerts - suscripción email"]
+        cw["CloudWatch - 4 alarmas + 2 del target tracking"]
+        trail["CloudTrail - historial de eventos 90 días"]
+    end
+
+    user -->|"HTTPS"| cf
+    cf -->|"comportamiento por defecto, caché, OAC"| s3front
+    cf -->|"/api/* sin caché, HTTP 80"| alb
+    user -.->|"PUT con URL prefirmada"| s3docs
+    igw --- alb
+    alb -->|"8000, SG app solo desde SG alb"| ec2a
+    alb -->|"8000, SG app solo desde SG alb"| ec2b
+    ec2a -->|"3306"| rds
+    ec2b -->|"3306"| rds
+    ec2a -->|"443"| ifep
+    ec2b -->|"443"| ifep
+    ec2a --> gwep
+    ec2b --> gwep
+    gwep --> s3docs
+    gwep --> s3art
+    gwep --> ddbdoc
+    gwep --> ddbevt
+    ifep --> ssmps
+    ifep --> sns
+    asg -.->|"CPUUtilization"| cw
+    rds -.->|"CPU, conexiones, espacio libre"| cw
+    cw -->|"alarmas"| sns
+    sns -->|"email"| mail
+```
+
+Lectura del diagrama:
+
+- **Un solo dominio público.** CloudFront sirve el frontend desde S3 (comportamiento por defecto, cacheado) y reenvía `/api/*` al ALB sin caché, con `Authorization`, `Content-Type` y `Origin`. El navegador siempre ve HTTPS; el tramo CloudFront → ALB es HTTP porque el Sandbox no permite dominio propio ni certificado ACM.
+- **Subida directa.** El archivo no pasa por las instancias: el navegador hace `PUT` al bucket de documentos con la URL prefirmada que devuelve la API.
+- **Red cerrada.** Las instancias y RDS viven en subredes privadas sin NAT ni IP pública. Todo el tráfico hacia AWS sale por endpoints: gateway para S3 y DynamoDB (gratis, rutas en la tabla privada) e interface para SSM y SNS (ENI en cada subred privada con private DNS). Los repositorios `dnf` de Amazon Linux 2023 también se alcanzan por el gateway de S3.
+- **Security groups encadenados.** `alb` (80 desde internet) → `app` (8000 solo desde `alb`) → `rds` (3306 solo desde `app`). `endpoints` acepta 443 desde la VPC. No hay puerto 22: la administración es por Session Manager.
+- **Arranque de cada instancia.** El userData lee los secretos de Parameter Store, descarga el artefacto `releases/app-<md5>.zip`, instala `nodejs24`, arranca los servicios systemd de la API y el worker, y solo se da por lista cuando `GET /api/ready` llega a MySQL.
+
+### Flujo de un documento
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Usuario
+    participant CF as CloudFront y ALB
+    participant API as API en EC2
+    participant DOC as DynamoDB documents
+    participant EVT as DynamoDB document_events
+    participant S3 as S3 documentos
+    participant W as Worker en EC2
+    participant SNS as SNS alerts
+
+    Note over U,EVT: Paso 1 - alta del documento
+    U->>CF: POST /api/documents con JWT, filename, contentType y size
+    CF->>API: reenvío sin caché
+    API->>DOC: Put status PENDING si attribute_not_exists documentId
+    API->>EVT: Put evento de creación en la misma TransactWriteItems
+    API-->>U: 201 con documentId y uploadUrl prefirmada por 900 s
+
+    Note over U,S3: Paso 2 - subida directa del navegador
+    U->>S3: PUT uploadUrl con el mismo Content-Type firmado
+    S3-->>U: 200 con ETag
+
+    Note over W,SNS: Paso 3 - procesamiento asíncrono, sondeo cada 5 s
+    W->>DOC: Query GSI status-createdAt con status PENDING, más antiguos primero
+    W->>S3: HeadObject de la s3Key
+    alt el objeto no existe todavía
+        W->>W: espera si tiene menos de 15 min
+        W->>DOC: si tiene 15 min o más, Update condicional PENDING a FAILED upload timeout
+        W->>EVT: Put evento PENDING a FAILED
+        W->>SNS: Publish con status FAILED
+    else el objeto existe
+        W->>DOC: Update condicional status igual a PENDING, nuevo valor PROCESSING
+        W->>EVT: Put evento PENDING a PROCESSING en la misma transacción
+        alt otro worker lo reclamó antes
+            DOC-->>W: ConditionalCheckFailed, el documento se omite
+        else este worker gana el reclamo
+            W->>S3: GetObject en streaming, máximo 10 MB
+            W->>W: MIME por magic bytes, SHA-256, páginas o dimensiones
+            W->>DOC: Update condicional PROCESSING a DONE con result, o a FAILED con error
+            W->>EVT: Put evento de cierre en la misma transacción
+            W->>SNS: Publish DocuProcess filename status
+        end
+    end
+
+    Note over U,EVT: Consulta del usuario
+    U->>CF: GET /api/documents/ID
+    CF->>API: reenvío sin caché
+    API->>DOC: GetItem con ConsistentRead y verificación de dueño
+    API-->>U: 200 con status y result
+    U->>CF: GET /api/documents/ID/events
+    CF->>API: reenvío sin caché
+    API->>EVT: Query por documentId en orden ascendente, máximo 200
+    API-->>U: 200 con la bitácora
+```
+
+Puntos clave del flujo:
+
+- **Atomicidad estado + bitácora.** Cada transición escribe el documento y su evento en un `TransactWriteItems`; si una de las dos condiciones falla, no se escribe ninguna. Con `DDB_TRANSACTIONS=false` (respaldo del Sandbox) se escriben en secuencia.
+- **Reclamo sin colas externas.** El `UpdateItem` condicional `#s = :pending` es la exclusión mutua: con 2 a 4 instancias consultando el mismo índice, solo una gana cada documento; las demás reciben `ConditionalCheckFailed` y siguen.
+- **Cierre también condicional.** `DONE` y `FAILED` exigen `#s = :processing`, y el timeout de subida exige `#s = :pending`; un documento terminal nunca se reabre.
+- **SNS es at-least-once.** La publicación se hace después de persistir la transición; si SNS falla, el estado ya está guardado y el error queda en el log del worker.
+
+### Inventario de componentes
+
+| Recurso | Módulo de Terraform | Propósito |
+| --- | --- | --- |
+| VPC `10.0.0.0/16` con DNS habilitado | `network` | Red aislada de la aplicación; el DNS lo exige el private DNS de los interface endpoints |
+| 2 subredes públicas `10.0.1.0/24`, `10.0.2.0/24` | `network` | ALB en dos AZ |
+| 2 subredes privadas `10.0.11.0/24`, `10.0.12.0/24` | `network` | EC2, RDS e interface endpoints |
+| Internet Gateway y tabla de rutas pública | `network` | Entrada y salida del ALB |
+| Tabla de rutas privada compartida | `network` | Sin ruta a internet; rutas a los gateway endpoints |
+| NAT Gateway y EIP | `network` | Opcional, desactivado (`enable_nat_gateway = false`) |
+| Gateway endpoints `s3` y `dynamodb` | `network` | Acceso privado y gratuito a S3 (incluye repos de `dnf`) y DynamoDB |
+| Interface endpoints `ssm`, `ssmmessages`, `ec2messages`, `sns` | `network` | Session Manager, Parameter Store y publicación SNS sin NAT |
+| Security groups `alb`, `app`, `rds`, `endpoints` | `network` | Cadena 80 → 8000 → 3306 y 443 hacia los endpoints |
+| Launch template AL2023, IMDSv2, `gp2` cifrado | `compute` | Receta de las instancias; el instance profile es el preexistente del Sandbox |
+| Application Load Balancer y listener HTTP 80 | `compute` | Punto de entrada de la API; origen `/api/*` de CloudFront |
+| Target group `:8000`, health check `GET /api/health` | `compute` | Enruta a las instancias sanas; health superficial, no depende de RDS |
+| Auto Scaling Group 2–4, health check ELB | `compute` | API y worker en dos AZ; el nombre lleva la versión del launch template para reemplazarse sin caída |
+| Política target tracking CPU 60 % | `compute` | Escalado dinámico; AWS crea sus dos alarmas `AlarmHigh` y `AlarmLow` |
+| Subnet group y RDS MySQL 8.0 `db.t3.micro` | `rds` | Usuarios y autenticación; Single-AZ, privado, `gp2` cifrado, backups de 1 día |
+| Parámetros SecureString `/<name_prefix>/db_password` y `/jwt_secret` | raíz (`main.tf`) | Secretos fuera del userData y del launch template |
+| Objeto `releases/app-<md5>.zip` | raíz (`main.tf`) | Artefacto de la app; un hash nuevo genera un ASG nuevo |
+| Buckets `docs`, `frontend`, `artifacts` (`awscc_s3_bucket`) | `storage` | Documentos de usuario, sitio estático y releases |
+| Bloqueo público, `BucketOwnerEnforced`, SSE-S3 | `storage` | Los tres buckets privados y cifrados |
+| CORS del bucket `docs` | `storage` | `PUT` prefirmado desde CloudFront y `localhost:5500` |
+| Versionado del bucket `artifacts` | `storage` | Volver a un release anterior |
+| Lifecycle `uploads/` | `storage` | Opcional, desactivado por defecto (`docs_lifecycle_expiration_days = 0`) |
+| Bucket policies `docs` y `artifacts` | `storage` | Permisos del rol de la app sobre `uploads/*` y `releases/*` |
+| `terraform_data` de vaciado | `storage` | Vacía los buckets con `scripts/empty-bucket.sh` antes de destruirlos |
+| Tabla `documents` + 2 GSI, PITR, on-demand | `dynamodb` | Estado actual y cola del worker |
+| Tabla `document_events` + 2 GSI, PITR, on-demand | `dynamodb` | Bitácora append-only |
+| Resource policies de las dos tablas | `dynamodb` | Permisos de datos del rol; sin `UpdateItem`/`DeleteItem` en la bitácora |
+| Tópico `alerts`, suscripción email y topic policy | `sns` | Avisos del worker y de las alarmas |
+| Distribución CloudFront con 2 orígenes | `cdn` | `frontend-s3` (por defecto, caché) y `alb-api` (`/api/*`, sin caché) |
+| Origin Access Control y bucket policy del frontend | `cdn` | Solo esta distribución puede leer el bucket del frontend |
+| 4 alarmas CloudWatch | `monitoring` | CPU del ASG > 80 %, CPU de RDS > 80 %, conexiones RDS > 50, espacio libre RDS < 2 GiB; acciones de alarma y OK a SNS |
+| Trail, bucket dedicado y su política | `monitoring` | Solo con `cloudtrail_mode = "trail"`; en el Sandbox (`event-history`, por defecto) no se crean y la auditoría usa el historial de eventos |
+
+### Permisos de la aplicación
+
+Las instancias usan el instance profile del rol preexistente `AmazonSSMRoleForInstancesQuickSetup`, que solo trae permisos de SSM. Como el Sandbox no permite crear ni modificar roles, cada recurso de datos concede el acceso con una **política basada en el recurso** cuyo principal es el ARN del rol (`local.app_role_arn`).
+
+| Acción | Recurso | Concedida por | La usa |
+| --- | --- | --- | --- |
+| `s3:PutObject` | bucket `docs`, prefijo `uploads/*` | bucket policy `docs` (`storage`) | API: firma la URL prefirmada con las credenciales del rol |
+| `s3:GetObject` | bucket `docs`, prefijo `uploads/*` | bucket policy `docs` (`storage`) | Worker: `HeadObject` y `GetObject` del archivo subido |
+| `s3:GetObject` | bucket `artifacts`, prefijo `releases/*` | bucket policy `artifacts` (`storage`) | userData: descarga del artefacto |
+| `dynamodb:GetItem`, `PutItem`, `UpdateItem`, `Query` | tabla `documents` e `index/*` | resource policy `documents` (`dynamodb`) | API: alta, detalle y lista; worker: cola, reclamo y cierre |
+| `dynamodb:GetItem`, `PutItem`, `Query` | tabla `document_events` e `index/*` | resource policy `events` (`dynamodb`) | API y worker: eventos append-only y lectura de la bitácora |
+| `sns:Publish` | tópico `alerts` | topic policy (`sns`) | Worker: aviso de `DONE` y `FAILED` |
+| `ssm:GetParameter` con descifrado | `parameter/*` | política de identidad del rol, preexistente | userData: `db_password` y `jwt_secret` |
+| Acciones del agente SSM | la instancia | `AmazonSSMManagedInstanceCore`, preexistente | Session Manager, sin SSH |
+
+`TransactWriteItems` no aparece porque no es una acción IAM: DynamoDB autoriza cada ítem de la transacción con su propia acción (`PutItem`, `UpdateItem`). La bitácora no concede `UpdateItem` ni `DeleteItem`, así que la inmutabilidad la impone AWS y no solo el código.
+
+Otros principales con acceso por política de recurso:
+
+| Principal | Acción | Recurso | Concedida por |
+| --- | --- | --- | --- |
+| `cloudfront.amazonaws.com`, condición `AWS:SourceArn` = la distribución | `s3:GetObject` | bucket `frontend` | bucket policy del frontend (`cdn`) |
+| `cloudwatch.amazonaws.com`, condición `aws:SourceAccount` = la cuenta | `sns:Publish` | tópico `alerts` | topic policy (`sns`) |
+
+### Restricciones del Sandbox y solución
+
+| Restricción observada | Solución en el diseño |
+| --- | --- |
+| No se pueden crear roles ni políticas IAM; el rol de las EC2 solo tiene SSM | Permisos por políticas basadas en recursos (bucket, tabla, tópico); secretos en Parameter Store, que el rol sí puede leer |
+| El instance profile tiene un nombre generado distinto en cada cuenta | Se descubre con `data "aws_iam_instance_profiles"` a partir del nombre del rol |
+| `RunInstances` con volúmenes `gp3` es denegado | Disco raíz de EC2 y almacenamiento de RDS en `gp2` |
+| `s3:GetBucketObjectLockConfiguration` es denegado y `aws_s3_bucket` falla | Buckets con `awscc_s3_bucket`, sub-recursos de `aws` y vaciado con `terraform_data` al destruir |
+| `autoscaling:StartInstanceRefresh` es denegado por una SCP | Sin `instance_refresh`: el ASG lleva la versión del launch template en el nombre y se reemplaza con `create_before_destroy` + `wait_for_elb_capacity` |
+| `cloudtrail:CreateTrail` es denegado; `LookupEvents` sí está permitido | `cloudtrail_mode = "event-history"` por defecto y `scripts/verify-cloudtrail.sh`; el modo `trail` queda listo para otra cuenta |
+| `dynamodb:TransactWriteItems` no es una acción válida en una política | Se quitó de las resource policies; la transacción se autoriza por ítem |
+| La topic policy no acepta `sns:*` y `s3:HeadObject` no es una acción válida | Acciones concretas en cada política (`sns:Publish`, `s3:GetObject`) |
+| Sin dominio propio ni certificado ACM | Certificado por defecto de CloudFront; CloudFront → ALB en HTTP 80 |
+| Sin NAT no hay internet ni STS desde las instancias | Gateway e interface endpoints; `node_modules` empaquetados en el artefacto; la app no usa STS ni listados de cuenta |
+| No se pueden crear llaves KMS propias | Cifrado con llaves administradas por AWS: SSE-S3, `aws/rds`, `aws/dynamodb`, `aws/ssm` |
+| Tipos de instancia limitados | Validación en `instance_type`: solo `t2`/`t3` `micro`, `small` o `medium`; por defecto `t3.micro` |
+| Costo y tiempo de creación de RDS Multi-AZ | `multi_az = false`; el subnet group ya cubre dos AZ para pasar a Multi-AZ sin rehacer la red |
 
 ## Contratos de integración
 
