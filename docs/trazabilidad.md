@@ -17,24 +17,24 @@
 
 | # | Requisito | Evidencia | Estado | Última verificación | Riesgo / nota |
 | --- | --- | --- | --- | --- | --- |
-| 1 | VPC con subredes públicas (ALB) y privadas (app + datos) | `infra/modules/network/`; `terraform validate` | Implementado | 2026-11-11 | Falta `plan/apply` en la cuenta del Sandbox |
-| 2 | ALB + ASG 2–4, `t3.micro` | `infra/modules/compute/`; salidas `alb_dns_name`, `asg_name` | Implementado | 2026-11-11 | Prueba de carga (A8) pendiente |
-| 3 | API y worker en las mismas instancias | `scripts/user-data.sh.tftpl` (unidades `docuprocess-api` y `docuprocess-worker`) | Implementado | 2026-11-11 | `app/worker/` aún no existe: el userData solo crea la unidad si el artefacto trae worker |
-| 4 | SSM Session Manager, sin SSH ni bastión | `data "aws_iam_instance_profiles"`; rol preexistente; sin key pair | Implementado | 2026-11-11 | El Sandbox no permite crear roles: solo se usa `AmazonSSMRoleForInstancesQuickSetup` |
-| 5 | RDS MySQL Single-AZ `db.t3.micro` para cuentas y autenticación | `infra/modules/rds/`; `db/multi_az = false`; `gp2` 20 GB | Implementado | 2026-11-11 | Sin `apply` no se ha visto la instancia `available` |
-| 6 | S3 para archivos | Bucket de documentos + URL prefirmada (`app/api/src/aws.ts`) | Pendiente B2 | 2026-11-11 | `module.storage` aún no está en `main.tf`; el userData usa el servidor provisional |
-| 7 | DynamoDB para metadatos, historial y resultados | `infra/modules/dynamodb/` (dos tablas, 4 GSIs, 2 políticas); pruebas CLI en DynamoDB Local | Implementado (verificado en local) | 2026-11-11 | **Objeto de B3**; falta `apply` en la cuenta del Sandbox |
-| 8 | SNS para notificaciones | `module.sns` previsto (B6) | Pendiente B6 | 2026-11-11 | El userData ya recibe `SNS_TOPIC_ARN` (vacío hasta B6) |
+| 1 | VPC con subredes públicas (ALB) y privadas (app + datos) | `infra/modules/network/`; apply en cuenta 491699813584 OK | Verificado | 2026-11-13 | Aplicado desde estado vacío (apply3) |
+| 2 | ALB + ASG 2–4, `t3.micro` | apply OK: 2 instancias InService/Healthy; drill terminación → reemplazo ASG; 2/2 healthy | Verificado | 2026-11-13 | Prueba de carga (A8) pendiente |
+| 3 | API y worker en las mismas instancias | `docuprocess-api` y `docuprocess-worker` `active` en AMBAS instancias vía SSM (2026-11-13) | Verificado | 2026-11-13 | — |
+| 4 | SSM Session Manager, sin SSH ni bastión | `/etc/docuprocess.env` real completo en ambas instancias vía send-command; API/worker active | Verificado | 2026-11-13 | Rol preexistente (AmazonSSMRoleForInstancesQuickSetup) |
+| 5 | RDS MySQL Single-AZ `db.t3.micro` para cuentas y autenticación | apply OK: docuprocess-dev-mysql db.t3.micro disponible (endpoint c9pldrtatyja) | Verificado | 2026-11-13 | — |
+| 6 | S3 para archivos | apply OK: buckets docuprocess-dev-{docs,frontend,artifacts}-47cb5959 con PAB/SSE/versioning/CORS/OAC; subida PUT prefirmada OK (3/3) | Verificado | 2026-11-13 | — |
+| 7 | DynamoDB para metadatos, historial y resultados | apply OK: tablas ACTIVE; document_events: PENDING→PROCESSING→DONE sin duplicados (3/3 docs) | Verificado | 2026-11-13 | — |
+| 8 | SNS para notificaciones | apply OK: topic docuprocess-dev-alerts + suscripción email ingesoftv@gmail.com | Riesgo | 2026-11-13 | Suscripción PendingConfirmation; Terraform no confirma el correo — el usuario debe confirmarla |
 | 9 | CloudWatch: alarmas de CPU de EC2 y métricas de RDS | Módulo `monitoring` previsto (B9) | Pendiente B9 | 2026-11-11 | — |
 | 10 | CloudTrail para auditoría | Módulo `monitoring` previsto (B9) | Pendiente B9 | 2026-11-11 | — |
-| 11 | IaC modular (Terraform) | `infra/main.tf` + `infra/modules/{network,compute,rds,dynamodb}` | Implementado | 2026-11-11 | Módulos storage/sns/cdn/monitoring pendientes de sus tareas |
+| 11 | IaC modular (Terraform) | apply desde estado vacío OK: Plan 68 to add, 68/68, APPLY3_EXIT=0; módulos network/storage/dynamodb/rds/compute/sns/cdn | Verificado | 2026-11-13 | monitoring pendiente de B9/B10 |
 | 12 | Sin `CreateRole`/`GetRole`; solo roles preexistentes | `data.aws_iam_instance_profiles` + políticas basadas en recursos | Verificado | 2026-11-11 | — |
 | 13 | EC2 `t2/t3`, máximo 9 concurrentes, EBS `gp2` ≤ 35 GB | `var.instance_type` y `var.root_volume_size` con validaciones | Verificado | 2026-11-11 | — |
 | 14 | RDS `gp2` ≤ 100 GB, Single-AZ | `infra/modules/rds/main.tf` | Verificado | 2026-11-11 | — |
 | 15 | Comparativa RDS vs. DynamoDB | `docs/rds-vs-dynamodb.md` | Verificado | 2026-11-11 | — |
 | 16 | Diagrama detallado y flujo | `README.md` (componentes) y `docs/architecture.md` §4.1 (datos) | Implementado | 2026-11-11 | El diagrama completo con la tabla de eventos es B10 |
 | 17 | Guía de despliegue y troubleshooting | README (mínimo) | Pendiente A9 | 2026-11-11 | — |
-| 18 | Demo: subida S3 → worker → DynamoDB → SNS | API + worker + tablas | Pendiente B5/B6 | 2026-11-11 | El worker y SNS aún no están implementados |
+| 18 | Demo: subida S3 → worker → DynamoDB → SNS | Flujo E2E 2026-11-13 (vía CloudFront): registro/login; PDF→DONE pages=1; PNG→DONE width/height=1; corrupt.pdf→FAILED unsupported file type; doc ajeno 404 | Verificado | 2026-11-13 | SNS correo pendiente de confirmación (PendingConfirmation) |
 | 19 | Prueba de carga para el ASG | Scripts previstos (A8) | Pendiente A8 | 2026-11-11 | — |
 
 ## 3. Criterios de terminado de B3
@@ -55,7 +55,18 @@
 | `npm run typecheck`, `npm run build`, `npm test` | 68 pruebas en verde | Verificado | 2026-11-12 |
 | ShellCheck del userData | `shellcheck` sobre las dos variantes renderizadas (provisional y con artefacto) | Verificado | 2026-11-11 |
 
-## 4. Riesgos abiertos
+## 4. Despliegue C3 (2026-11-13, cuenta 491699813584)
+
+Rama `feat/C3-integracion-e2e-una-sola-cuenta`; PR #50 (Closes #16). Aplicado, probado y documentado en una sola cuenta Sandbox (`AWS_PROFILE=academy`):
+
+- Apply desde estado vacío (`terraform init` + `plan -out=tfplan3.bin` → `68 to add, 0 change, 0 destroy`; `APPLY3_EXIT=0`): red (VPC vpc-0140c57f0081acafc, IGW, RTBs, 4 subnets, SGs, endpoints), S3 `docuprocess-dev-{artifacts,docs,frontend}-47cb5959` (PAB, SSE, versionado, CORS docs, política OAC frontend), RDS `docuprocess-dev-mysql` (db.t3.micro, single-AZ, `available`), DynamoDB `documents`/`document_events`, SNS `docuprocess-dev-alerts` + suscripción email a ingesoftv@gmail.com (**PendingConfirmation**; Terraform no confirma correos de terceros), ALB `docuprocess-dev-alb` → TG `docuprocess-dev-app`, ASG `docuprocess-dev-app-v1` (2× t3.micro), Auth/API + worker en mismas instancias.
+- Frontend servido por CloudFront `d39ytkzrdg5rpz.cloudfront.net` (OAC → S3 + `/api/*` → ALB). `/` y `/api/health` → 200 (`{"status":"ok"}`).
+- E2E desde el navegador: registro/login, PDF DONE (pages=1), PNG DONE (1×1), PDF corrupto FAILED (`unsupported file type`), documentos de un usuario no visibles para otro (404). `document_events`: PENDING→PROCESSING→DONE sin duplicados.
+- Tolerancia a fallo: `terminate-instances` de una instancia → ALB siguió 200 (la instancia restante servía), ASG la reemplazó (5xx transitorios ~1–4 min durante draining/registro, comportamiento esperado), target group quedó 2/2 healthy.
+- ENTREGA: **viernes 13 de noviembre de 2026** (milestone "Entrega 13 nov"). C4 (#23) queda para el 17 nov en cuenta limpia.
+- Pendiente/observaciones para A9: huérfanos sin tag que hicieron fallar la primera verificación de cuenta vacía (apply3 pasó solo tras borrarlos manualmente); tfstate de otra cuenta inconsistente → reset documentado (tfstate `.obsoleto-20261113`, previo `previa-20261112`); SNS solo PendingConfirmation (suscripción externa); CloudFront 504 transitorio con draining; `voc-cancel-cred` a mitad de apply (credenciales voclabs revocadas, relanzar lab + re-plan/apply idempotente); `tfplan*.bin` nunca se commitean.
+
+## 5. Riesgos abiertos
 
 | Riesgo | Impacto | Mitigación |
 | --- | --- | --- |
