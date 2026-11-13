@@ -32,7 +32,7 @@ El laboratorio **no estaba limpio**: al reutilizarlo, conservó recursos de un d
 | Buckets S3 | `docuprocess-dev-{docs,frontend,artifacts}-77d1730d` |
 | RDS `docuprocess-dev-mysql` | `available` (reutilizado; db.t3.micro Single-AZ) |
 | DynamoDB | `documents`, `document_events` activas |
-| SNS `docuprocess-dev-alerts` | suscripción `<TEAM_EMAIL>` = **PendingConfirmation** al desplegar; confirmada después (13-nov, ver `docs/informe-b10.md`) |
+| SNS `docuprocess-dev-alerts` | suscripción `<TEAM_EMAIL>` = **PendingConfirmation** al desplegar; confirmada después (13-nov) |
 | CloudTrail | modo `event-history` (sin trails; documentado) |
 | Alarmas (4) | todas **OK**, 1 acción hacia SNS |
 
@@ -48,7 +48,7 @@ El laboratorio **no estaba limpio**: al reutilizarlo, conservó recursos de un d
 - Las APIs de lectura **sí funcionaron** en esta sesión (a diferencia de la sesión previa temprano ese mismo día, que vio denegaciones SCP).
 - Los IDs de esta sección (VPC, buckets, CloudFront) corresponden a este despliegue final; las sesiones anteriores del mismo día (C3/B9) usaron otros IDs.
 - El RDS sobrevivió al reset del lab: no es un "desde cero" de datos, pero sí de infraestructura de aplicación/edge/alarma.
-- La suscripción SNS quedó `PendingConfirmation` al desplegar; se confirmó el buzón después ese mismo día (13-nov), así que las alertas ya se entregan (ver `docs/informe-b10.md`).
+- La suscripción SNS quedó `PendingConfirmation` al desplegar; se confirmó el buzón después ese mismo día (13-nov), así que las alertas ya se entregan (ver la evidencia de monitoreo).
 - `terraform destroy` no se ejecutó (el stack se conserva para la defensa/demo).
 
 ## Conclusión

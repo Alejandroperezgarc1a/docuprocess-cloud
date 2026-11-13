@@ -42,7 +42,7 @@ Consistencia cruzada: la prueba de carga complementa el target tracking `ASGAver
 
 1. La política de **target tracking CPU 60 %** funciona de verdad: la CPU saturada disparó el escalado 2→4 y el ASG reemplazó capacidad sin intervención manual.
 2. El flujo completo bajo carga (ALB → 2→4 EC2 → API → login bcrypt) se mantuvo sirviendo 200/4xx/5xx esperados; los 4 no-2xx son la transitoriedad típica de draining/scale-out.
-3. Las alarmas CloudWatch (`docuprocess-dev-ec2-cpu-high`, ver `docs/informe-b10.md`) estaban en `OK` con 1 acción SNS antes de la prueba; la corrida no generó fallo de servicio.
+3. Las alarmas CloudWatch (`docuprocess-dev-ec2-cpu-high`, ver la evidencia de monitoreo) estaban en `OK` con 1 acción SNS antes de la prueba; la corrida no generó fallo de servicio.
 
 ### Contexto (no es el resultado de A8)
 

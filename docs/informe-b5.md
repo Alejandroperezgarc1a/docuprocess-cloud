@@ -87,7 +87,7 @@ DynamoDB de AWS ni el cableado de `module.sns.topic_arn`, porque B3 y B6 aún no
 en la rama de B5.
 
 > **Actualización 2026-11-13:** la suscripción se confirmó y B10 verificó CloudWatch → SNS con la
-> acción `Successfully executed action … docuprocess-dev-alerts` (ver `docs/informe-b10.md`).
+> acción `Successfully executed action … docuprocess-dev-alerts` (ver la evidencia de monitoreo).
 
 ## Pendientes de integración
 

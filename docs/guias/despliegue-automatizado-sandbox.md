@@ -1023,7 +1023,7 @@ decidiste conservar.
 | Documentación técnica: diagrama detallado | `README.md` (diagrama de componentes) y `docs/architecture.md` §1 | Cumple |
 | Justificación RDS vs. DynamoDB | `docs/rds-vs-dynamodb.md` | Cumple |
 | Guía paso a paso de despliegue automatizado y solución de problemas en el Sandbox | Este documento (`.md` y `.pdf`) y la guía rápida `docs/guias/despliegue.md` | Cumple |
-| Sustentación/demo: despliegue desde cero, flujo S3→worker→DynamoDB→SNS y carga del ASG | `docs/sustentacion.md`, `docs/informe-c4.md`, `docs/informe-a8.md`, `docs/informe-b10.md` | Cumple |
+| Sustentación/demo: despliegue desde cero, flujo S3→worker→DynamoDB→SNS y carga del ASG | Verificación E2E de este documento y `docs/trazabilidad.md` | Cumple |
 
 ### 7.2 Matriz requisito → implementación → evidencia
 
@@ -1060,8 +1060,8 @@ decidiste conservar.
 | IaC y automatización | 30 % | Terraform modular, variables validadas, outputs, userData, scripts, CI de validación | `infra/`, `scripts/`, `.github/workflows/ci.yml` |
 | Arquitectura e integración | 25 % | VPC segmentada, ALB/ASG, CloudFront+OAC, endpoints, SSM, S3/DynamoDB/RDS/SNS | `docs/architecture.md`, este documento §5 |
 | Gestión de datos y persistencia | 20 % | RDS para usuarios, DynamoDB para metadatos/eventos, S3 para archivos, prefirmadas | `docs/rds-vs-dynamodb.md`, §5.5 |
-| Monitoreo, alertas y resiliencia | 15 % | 4 alarmas, SNS, CloudTrail, health/ready, ASG, reemplazo controlado | `docs/informe-b10.md`, §5.7, §5.8 |
-| Documentación y sustentación | 10 % | README, arquitectura, trazabilidad, esta guía y guion de demo | `docs/sustentacion.md`, este documento |
+| Monitoreo, alertas y resiliencia | 15 % | 4 alarmas, SNS, CloudTrail, health/ready, ASG, reemplazo controlado | §5.7, §5.8 |
+| Documentación y sustentación | 10 % | README, arquitectura, trazabilidad, esta guía y guion de demo | este documento y `docs/trazabilidad.md` |
 
 ### 7.4 Restricciones: cumplimiento y salvedades
 
@@ -1198,10 +1198,6 @@ Incidencias y solución:
 - Arquitectura e integración: [`../architecture.md`](../architecture.md)
 - RDS vs. DynamoDB: [`../rds-vs-dynamodb.md`](../rds-vs-dynamodb.md)
 - Trazabilidad: [`../trazabilidad.md`](../trazabilidad.md)
-- Sustentación: [`../sustentacion.md`](../sustentacion.md)
-- Informe de monitoreo: [`../informe-b10.md`](../informe-b10.md)
-- Informe de carga: [`../informe-a8.md`](../informe-a8.md)
-- Informe de despliegue desde cero: [`../informe-c4.md`](../informe-c4.md)
 
 ### E. Glosario
 

@@ -148,5 +148,5 @@ Satura `/api/auth/login` (bcrypt, costo 12) contra **el ALB** (no CloudFront) y 
 - [ ] Sesión del lab iniciada con tiempo suficiente (credenciales no vencidas).
 - [ ] `./scripts/deploy-frontend.sh` ejecutado y `config.js` verificado (`curl …/config.js` → `apiBaseUrl: ""`).
 - [ ] Subida real PDF y PNG; corrupto → `FAILED`; documento ajeno → 404.
-- [ ] Alarmas CloudWatch `docuprocess-dev-*` visibles en la consola (CPU EC2, RDS CPU/connections/storage) → publican a SNS (ver `docs/informe-b10.md` cuando B10 cierre su evidencia).
+- [ ] Alarmas CloudWatch `docuprocess-dev-*` visibles en la consola (CPU EC2, RDS CPU/connections/storage) → publican a SNS (ver la sección de monitoreo de la guía operativa).
 - [ ] `scripts/load-test.sh` corrido al menos una vez con evidencia capturada (A8).

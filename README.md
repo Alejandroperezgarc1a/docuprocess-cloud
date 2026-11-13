@@ -126,7 +126,7 @@ terraform -chdir=infra init && terraform -chdir=infra apply
 # Revisar el correo de AWS y confirmar la suscripción de SNS antes de probar las alertas.
 ```
 
-`deploy-frontend.sh` comprueba las credenciales y la cuenta, lee los outputs de B2/B7, genera `frontend/public/config.js`, construye el frontend y publica `frontend/dist/` con cabeceras de caché e invalidación. Falla antes de escribir si el estado de Terraform es de otra cuenta o si B7 no está aplicado. Las decisiones y la evidencia de B9 están en `docs/informe-b9.md`.
+`deploy-frontend.sh` comprueba las credenciales y la cuenta, lee los outputs de B2/B7, genera `frontend/public/config.js`, construye el frontend y publica `frontend/dist/` con cabeceras de caché e invalidación. Falla antes de escribir si el estado de Terraform es de otra cuenta o si B7 no está aplicado. La evidencia de B9 está en la sección de verificación de la guía operativa.
 
 La prueba de carga del ASG está en `scripts/load-test.sh` (sección 5.8 de la guía operativa).
 
@@ -134,7 +134,7 @@ La prueba de carga del ASG está en `scripts/load-test.sh` (sección 5.8 de la g
 
 ## Cierre y presentación
 
-La guía de presentación con el mapeo rúbrica → evidencia está en [`docs/sustentacion.md`](docs/sustentacion.md). El cierre del monitoreo está en [`docs/informe-b10.md`](docs/informe-b10.md) y el historial requisito → evidencia del proyecto en [`docs/trazabilidad.md`](docs/trazabilidad.md). A8 (escalado 2→4 bajo carga) y B10 (alarmas → SNS y `LookupEvents`) quedaron en estado **Verificado** el 13 de noviembre de 2026.
+El historial requisito → evidencia del proyecto está en [`docs/trazabilidad.md`](docs/trazabilidad.md). A8 (escalado 2→4 bajo carga) y B10 (alarmas → SNS y `LookupEvents`) quedaron en estado **Verificado** el 13 de noviembre de 2026.
 
 ## Desarrollo local
 
