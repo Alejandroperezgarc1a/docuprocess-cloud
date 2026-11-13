@@ -104,7 +104,7 @@ La semana del 2 al 6 de noviembre quedó limitada a las fundaciones. B2, B3, B6,
 
 ## Cómo desplegar
 
-La guía completa paso a paso (credenciales del Sandbox, verificación, destrucción y solución de problemas) está en [`docs/guias/despliegue.md`](docs/guias/despliegue.md). El orden resumido es:
+La guía operativa completa (preflight del Sandbox, despliegue automatizado, verificación E2E, importación de recursos huérfanos, operación y solución de problemas) está en [`docs/guias/despliegue-automatizado-sandbox.md`](docs/guias/despliegue-automatizado-sandbox.md) y en su versión PDF [`despliegue-automatizado-sandbox.pdf`](docs/guias/despliegue-automatizado-sandbox.pdf). La guía rápida de referencia sigue disponible en [`docs/guias/despliegue.md`](docs/guias/despliegue.md). El orden resumido es:
 
 ```bash
 aws sts get-caller-identity                                 # confirmar la cuenta del Sandbox antes de aplicar
@@ -118,7 +118,7 @@ terraform -chdir=infra init && terraform -chdir=infra apply
 
 `deploy-frontend.sh` comprueba las credenciales y la cuenta, lee los outputs de B2/B7, genera `frontend/public/config.js`, construye el frontend y publica `frontend/dist/` con cabeceras de caché e invalidación. Falla antes de escribir si el estado de Terraform es de otra cuenta o si B7 no está aplicado. Las decisiones y la evidencia de B9 están en `docs/informe-b9.md`.
 
-La prueba de carga del ASG está en `scripts/load-test.sh` (sección 5 de la guía).
+La prueba de carga del ASG está en `scripts/load-test.sh` (sección 5.8 de la guía operativa).
 
 `package-app.sh` va **antes** de cada `apply` que deba llevar código nuevo: Terraform sube el zip con su hash en el nombre y, si cambió, reemplaza las instancias sin caída del servicio.
 

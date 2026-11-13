@@ -1,10 +1,10 @@
 # Guía de despliegue y solución de problemas (AWS Academy Sandbox)
 
-Esta guía cubre el despliegue completo de DocuProcess Cloud desde una cuenta vacía del Sandbox de AWS Academy (Learner Lab), la verificación final y la destrucción del entorno, más la solución a los tropiezos conocidos del Sandbox. Tiempo estimado: 15–25 minutos.
+Esta guía cubre el despliegue completo de DocuProcess Cloud desde una cuenta vacía del Sandbox de AWS Academy (Learner Lab), la verificación final y la destrucción del entorno, más la solución a los tropiezos conocidos del Sandbox. Tiempo estimado: 30–45 minutos para el primer despliegue completo. La versión ampliada, con preflight, importación de huérfanos y verificación por capas, está en [`despliegue-automatizado-sandbox.md`](despliegue-automatizado-sandbox.md) y su [PDF](despliegue-automatizado-sandbox.pdf).
 
 ## 0. Requisitos
 
-- **Cuenta**: AWS Academy → Learner Lab, región **us-east-1**, plan de **redacción de recursos permitida** por el Sandbox (sin IAM propio, sin Lambda, instancias pequeñas, EBS `gp2`).
+- **Cuenta**: AWS Academy → Learner Lab, región **us-east-1**, plan de **creación de recursos permitida** por el Sandbox (sin IAM propio, sin Lambda, instancias pequeñas, EBS `gp2`).
 - **Rol obligatorio** (no se puede crear): `AmazonSSMRoleForInstancesQuickSetup` — la consola del lab lo trae. Verificar (paso 1.4).
 - **Herramientas locales**: `aws` CLI v2, `terraform` ≥ 1.9 (`infra/.terraform.lock.hcl`), `node` ≥ 22 (el CI y el userData usan AL2023 + `nodejs24`), `npm`, `ab` (apache2-utils/httpd-tools), `jq`, `curl`, `zip`, `python3`, `bash` ≥ 5, `shellcheck` (opcional).
 - **Credenciales vigentes** de la sesión del laboratorio (expiran con la sesión; ver §1).
