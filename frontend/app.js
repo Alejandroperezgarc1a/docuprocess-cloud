@@ -1,8 +1,10 @@
 (() => {
   "use strict";
 
-  const API_BASE = String(import.meta.env.VITE_API_BASE_URL || "")
-    .replace(/\/+$/, "");
+  const CONFIG = window.DOCUPROCESS_CONFIG || {};
+  const API_BASE = String(
+    import.meta.env.VITE_API_BASE_URL ?? CONFIG.apiBaseUrl ?? ""
+  ).replace(/\/+$/, "");
   const TOKEN_KEY = "docuprocess.token";
   const MAX_BYTES = 10 * 1024 * 1024;
   const POLL_MS = 5000;
