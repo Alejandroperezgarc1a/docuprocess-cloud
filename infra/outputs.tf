@@ -71,7 +71,7 @@ output "cloudfront_domain_name" {
 }
 
 output "cloudfront_distribution_id" {
-  description = "ID de la distribución de CloudFront (B7); se usa para invalidar la caché (B8)."
+  description = "ID de la distribución de CloudFront (B7); se usa para invalidar la caché (B9)."
   value       = module.cdn.distribution_id
 }
 
