@@ -46,7 +46,7 @@
 | PROCESSING huérfano (worker muerto tras el claim) | Reset con `aws dynamodb update-item ... status=PENDING` (ver `docs/guias/despliegue.md`) |
 | Credenciales expiradas (lab se reinicia) | Volver a copiar del lab (5 min); `invoke new apply` es idempotente |
 | `cloudtrail:CreateTrail` denegado | `event-history` (90 días vía `verify-cloudtrail.sh`); ya documentado |
-| ASG no observa → A8 sin evidencia CLI | Evidencia por consola (alarmas CHECK/OSS) o ejecutar la prueba con un rol con permisos |
+| A8 pendiente de mostrar en vivo | Evidencia ya capturada (2026-11-13): CPU 98-99 % → ASG 2→4 a los +333 s; adjuntar capturas en la defensa |
 
 ## Respuestas cortas para la defensa
 
@@ -55,4 +55,4 @@
 - **«¿Qué pasa si una instancia muere?»** — Health check `/api/health` en el TG; ALB deja de enviarle tráfico; ASG (CPU 60 % target tracking) reemplaza; draining 30 s; `Restart=always` en systemd para los servicios.
 - **«¿Hay auditoría?»** — `document_events` por cada transición (PENDING→PROCESSING→DONE/FAILED) + CloudTrail (event-history en el Sandbox); alarmas CloudWatch → SNS → correo del equipo.
 - **«¿El despliegue es reproducible?»** — Terraform modular + `package-app.sh` determinista (zip con md5) + `deploy-frontend.sh` (chequeo de cuenta y outputs) + CI en PRs (fmt/validate/tests/shellcheck/empaquetado) + guía `docs/guias/despliegue.md`.
-- **«¿Qué falta?»** — La evidencia viva de alarmas/carga (A8) requiere una sesión del Sandbox que autorice las APIs de lectura (el SCP actual las deniega); el procedimiento exacto está en `docs/informe-b10.md`.
+- **«¿Qué falta?»** — Nada crítico: la evidencia viva de alarmas (`OK`, acción SNS) y de carga (escalado 2→4 con CPU 98-99 %) ya se capturó el 2026-11-13 en la sesión de entrega (ver `docs/informe-b10.md` e `docs/informe-a8.md`). Queda únicamente el scale-in automático 4→2 (~15 min de CPU baja) y, opcionalmente, capturar la alarma en estado `ALARM` durante la demo.
