@@ -18,7 +18,7 @@
 | # | Requisito | Evidencia | Estado | Última verificación | Riesgo / nota |
 | --- | --- | --- | --- | --- | --- |
 | 1 | VPC con subredes públicas (ALB) y privadas (app + datos) | `infra/modules/network/`; apply en cuenta 491699813584 OK | Verificado | 2026-11-13 | Aplicado desde estado vacío (apply3) |
-| 2 | ALB + ASG 2–4, `t3.micro` | apply OK: 2 instancias InService/Healthy; drill terminación → reemplazo ASG; 2/2 healthy | Verificado | 2026-11-13 | Prueba de carga (A8) pendiente |
+| 2 | ALB + ASG 2–4, `t3.micro` | apply OK: 2 instancias InService/Healthy; drill terminación → reemplazo ASG; 2/2 healthy | Verificado | 2026-11-13 | Prueba de carga (A8) pendiente — ver `docs/informe-a8.md` |
 | 3 | API y worker en las mismas instancias | `docuprocess-api` y `docuprocess-worker` `active` en AMBAS instancias vía SSM (2026-11-13) | Verificado | 2026-11-13 | — |
 | 4 | SSM Session Manager, sin SSH ni bastión | `/etc/docuprocess.env` real completo en ambas instancias vía send-command; API/worker active | Verificado | 2026-11-13 | Rol preexistente (AmazonSSMRoleForInstancesQuickSetup) |
 | 5 | RDS MySQL Single-AZ `db.t3.micro` para cuentas y autenticación | apply OK: docuprocess-dev-mysql db.t3.micro disponible (endpoint c9pldrtatyja) | Verificado | 2026-11-13 | — |
@@ -35,7 +35,7 @@
 | 16 | Diagrama detallado y flujo | `README.md` (diagrama de componentes) y `docs/architecture.md` §1 (diagrama detallado, flujo del documento y tabla de componentes/eventos) | Verificado | 2026-11-13 | — |
 | 17 | Guía de despliegue y troubleshooting | `docs/guias/despliegue.md` (credenciales, despliegue, verificación, destroy y 12 casos de troubleshooting) | Verificado | 2026-11-13 | — |
 | 18 | Demo: subida S3 → worker → DynamoDB → SNS | Flujo E2E 2026-11-13 (vía CloudFront): registro/login; PDF→DONE pages=1; PNG→DONE width/height=1; corrupt.pdf→FAILED unsupported file type; doc ajeno 404; correo SNS por documento | Verificado | 2026-11-13 | — |
-| 19 | Prueba de carga para el ASG | Scripts previstos (A8) | Pendiente A8 | 2026-11-11 | — |
+| 19 | Prueba de carga para el ASG | `scripts/load-test.sh`; `docs/informe-a8.md` (procedimiento; sesión actual sin evidencia por SCP) | Pendiente A8 | 2026-11-13 | sesión voclabs deniega `Describe*`/`GetMetricStatistics`; consola o sesión con permisos |
 
 ## 3. Criterios de terminado de B3
 
