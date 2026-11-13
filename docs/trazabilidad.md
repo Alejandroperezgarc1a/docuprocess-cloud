@@ -17,14 +17,14 @@
 
 | # | Requisito | Evidencia | Estado | Última verificación | Riesgo / nota |
 | --- | --- | --- | --- | --- | --- |
-| 1 | VPC con subredes públicas (ALB) y privadas (app + datos) | `infra/modules/network/`; apply en cuenta 491699813584 OK | Verificado | 2026-11-13 | Aplicado desde estado vacío (apply3) |
+| 1 | VPC con subredes públicas (ALB) y privadas (app + datos) | `infra/modules/network/`; apply en cuenta `<AWS_ACCOUNT_ID>` OK | Verificado | 2026-11-13 | Aplicado desde estado vacío (apply3) |
 | 2 | ALB + ASG 2–4, `t3.micro` | apply OK: 2 instancias InService/Healthy; drill terminación → reemplazo ASG; 2/2 healthy | Verificado | 2026-11-13 | Prueba de carga (A8) pendiente |
 | 3 | API y worker en las mismas instancias | `docuprocess-api` y `docuprocess-worker` `active` en AMBAS instancias vía SSM (2026-11-13) | Verificado | 2026-11-13 | — |
 | 4 | SSM Session Manager, sin SSH ni bastión | `/etc/docuprocess.env` real completo en ambas instancias vía send-command; API/worker active | Verificado | 2026-11-13 | Rol preexistente (AmazonSSMRoleForInstancesQuickSetup) |
 | 5 | RDS MySQL Single-AZ `db.t3.micro` para cuentas y autenticación | apply OK: docuprocess-dev-mysql db.t3.micro disponible (endpoint c9pldrtatyja) | Verificado | 2026-11-13 | — |
 | 6 | S3 para archivos | apply OK: buckets docuprocess-dev-{docs,frontend,artifacts}-47cb5959 con PAB/SSE/versioning/CORS/OAC; subida PUT prefirmada OK (3/3) | Verificado | 2026-11-13 | — |
 | 7 | DynamoDB para metadatos, historial y resultados | apply OK: tablas ACTIVE; document_events: PENDING→PROCESSING→DONE sin duplicados (3/3 docs) | Verificado | 2026-11-13 | — |
-| 8 | SNS para notificaciones | apply OK: topic docuprocess-dev-alerts + suscripción email ingesoftv@gmail.com confirmada; worker `sns_published` (DONE) y CloudWatch `Delivered=3`, `Failed=0` | Verificado | 2026-11-13 | Terraform no puede confirmar la suscripción: la confirmación del buzón es manual (una vez) |
+| 8 | SNS para notificaciones | apply OK: topic docuprocess-dev-alerts + suscripción email `<TEAM_EMAIL>` confirmada; worker `sns_published` (DONE) y CloudWatch `Delivered=3`, `Failed=0` | Verificado | 2026-11-13 | Terraform no puede confirmar la suscripción: la confirmación del buzón es manual (una vez) |
 | 9 | CloudWatch: alarmas de CPU de EC2 y métricas de RDS | Módulo `monitoring` previsto (B10) | Pendiente B10 | 2026-11-11 | — |
 | 10 | CloudTrail para auditoría | Módulo `monitoring` previsto (B10) | Pendiente B10 | 2026-11-11 | — |
 | 11 | IaC modular (Terraform) | apply desde estado vacío OK: Plan 68 to add, 68/68, APPLY3_EXIT=0; módulos network/storage/dynamodb/rds/compute/sns/cdn | Verificado | 2026-11-13 | monitoring pendiente de B10 |
@@ -55,11 +55,11 @@
 | `npm run typecheck`, `npm run build`, `npm test` | 68 pruebas en verde | Verificado | 2026-11-12 |
 | ShellCheck del userData | `shellcheck` sobre las dos variantes renderizadas (provisional y con artefacto) | Verificado | 2026-11-11 |
 
-## 4. Despliegue C3 (2026-11-13, cuenta 491699813584)
+## 4. Despliegue C3 (2026-11-13, cuenta `<AWS_ACCOUNT_ID>`)
 
 Rama `feat/C3-integracion-e2e-una-sola-cuenta`; PR #50 (Closes #16). Aplicado, probado y documentado en una sola cuenta Sandbox (con el perfil de credenciales del laboratorio):
 
-- Apply desde estado vacío (`terraform init` + `plan -out=tfplan3.bin` → `68 to add, 0 change, 0 destroy`; `APPLY3_EXIT=0`): red (VPC vpc-0140c57f0081acafc, IGW, RTBs, 4 subnets, SGs, endpoints), S3 `docuprocess-dev-{artifacts,docs,frontend}-47cb5959` (PAB, SSE, versionado, CORS docs, política OAC frontend), RDS `docuprocess-dev-mysql` (db.t3.micro, single-AZ, `available`), DynamoDB `documents`/`document_events`, SNS `docuprocess-dev-alerts` + suscripción email a ingesoftv@gmail.com (confirmada; Terraform no puede confirmar correos de terceros), ALB `docuprocess-dev-alb` → TG `docuprocess-dev-app`, ASG `docuprocess-dev-app-v1` (2× t3.micro), Auth/API + worker en mismas instancias.
+- Apply desde estado vacío (`terraform init` + `plan -out=tfplan3.bin` → `68 to add, 0 change, 0 destroy`; `APPLY3_EXIT=0`): red (VPC vpc-0140c57f0081acafc, IGW, RTBs, 4 subnets, SGs, endpoints), S3 `docuprocess-dev-{artifacts,docs,frontend}-47cb5959` (PAB, SSE, versionado, CORS docs, política OAC frontend), RDS `docuprocess-dev-mysql` (db.t3.micro, single-AZ, `available`), DynamoDB `documents`/`document_events`, SNS `docuprocess-dev-alerts` + suscripción email a `<TEAM_EMAIL>` (confirmada; Terraform no puede confirmar correos de terceros), ALB `docuprocess-dev-alb` → TG `docuprocess-dev-app`, ASG `docuprocess-dev-app-v1` (2× t3.micro), Auth/API + worker en mismas instancias.
 - Frontend de la sesión C3 original: CloudFront `d39ytkzrdg5rpz.cloudfront.net` (OAC → S3 + `/api/*` → ALB). `/` y `/api/health` → 200 (`{"status":"ok"}`). El entorno vigente tras la recreación de B9 usa `d3dsxrvmbdbzfq.cloudfront.net` (ver nota siguiente).
 - E2E desde el navegador: registro/login, PDF DONE (pages=1), PNG DONE (1×1), PDF corrupto FAILED (`unsupported file type`), documentos de un usuario no visibles para otro (404). `document_events`: PENDING→PROCESSING→DONE sin duplicados.
 - Tolerancia a fallo: `terminate-instances` de una instancia → ALB siguió 200 (la instancia restante servía), ASG la reemplazó (5xx transitorios ~1–4 min durante draining/registro, comportamiento esperado), target group quedó 2/2 healthy.
@@ -77,7 +77,7 @@ Rama `feat/C3-integracion-e2e-una-sola-cuenta`; PR #50 (Closes #16). Aplicado, p
 | Con credenciales vencidas, el script falla al inicio con un mensaje claro | `InvalidClientTokenId` en `aws sts get-caller-identity`, antes de Terraform/npm/S3 | Verificado (local) | 2026-11-13 |
 | `bash -n`, ShellCheck y build de Vite | `bash -n` y `shellcheck scripts/*.sh` OK; `npm ci` + `npm run build` OK; CI del PR #52 en verde | Verificado (local + CI) | 2026-11-13 |
 
-**Estado:** B9 cerrado. El script se validó con `AWS_PROFILE=academy` (cuenta `491699813584`). El perfil `default` de la máquina apunta a `556880009270` y el script falla de forma segura antes de escribir si la cuenta no coincide con el estado.
+**Estado:** B9 cerrado. El script se validó con `AWS_PROFILE=academy` (cuenta `<AWS_ACCOUNT_ID>`). El perfil `default` de la máquina apunta a `<OTHER_AWS_ACCOUNT_ID>` y el script falla de forma segura antes de escribir si la cuenta no coincide con el estado.
 
 ## 6. Riesgos abiertos
 
@@ -94,7 +94,7 @@ Rama `feat/C3-integracion-e2e-una-sola-cuenta`; PR #50 (Closes #16). Aplicado, p
 ## 7. Cómo reproducir la verificación
 
 ```bash
-# En el Sandbox, usar el perfil del laboratorio (cuenta 491699813584)
+# En el Sandbox, usar el perfil del laboratorio (cuenta `<AWS_ACCOUNT_ID>`)
 export AWS_PROFILE=academy
 
 # Infraestructura

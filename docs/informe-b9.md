@@ -46,7 +46,7 @@ sean reales y no código muerto:
 - El script usa `AWS_REGION`/`AWS_DEFAULT_REGION`; si no están definidas, cae a `us-east-1`, el
   valor por defecto del proyecto. Si se cambia `aws_region`, hay que exportar la misma región.
 - El script no elige perfil de AWS: hereda `AWS_PROFILE`. En este repositorio se validó con
-  `AWS_PROFILE=academy` (cuenta `491699813584`, us-east-1).
+  `AWS_PROFILE=academy` (cuenta `<AWS_ACCOUNT_ID>`, us-east-1).
 
 ## Pruebas
 
@@ -89,7 +89,7 @@ curl -sS "https://$DOMAIN/" | grep "<texto temporal>"
 
 ### Infraestructura
 
-El laboratorio de AWS Academy se reinició y la cuenta `491699813584` quedó sin los recursos del
+El laboratorio de AWS Academy se reinició y la cuenta `<AWS_ACCOUNT_ID>` quedó sin los recursos del
 proyecto. Para validar B9 se refrescó el estado y se reaplicó el stack:
 
 - `terraform plan -refresh=true`: **64 to add, 0 change, 3 destroy** (los 3 destroy eran recursos
@@ -132,7 +132,7 @@ build → S3 → invalidación → CloudFront.
 
 ### Seguridad y credenciales
 
-- Con el perfil `default` (cuenta `556880009270`) y el estado de `491699813584`, el script falla
+- Con el perfil `default` (cuenta `<OTHER_AWS_ACCOUNT_ID>`) y el estado de `<AWS_ACCOUNT_ID>`, el script falla
   **antes de escribir** con un mensaje de cuenta incorrecta. No se aplicó nada sobre el estado
   ajeno.
 - Con credenciales inválidas (`InvalidClientTokenId`), falla en `aws sts get-caller-identity`,
