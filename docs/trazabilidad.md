@@ -60,23 +60,24 @@
 Rama `feat/C3-integracion-e2e-una-sola-cuenta`; PR #50 (Closes #16). Aplicado, probado y documentado en una sola cuenta Sandbox (con el perfil de credenciales del laboratorio):
 
 - Apply desde estado vacío (`terraform init` + `plan -out=tfplan3.bin` → `68 to add, 0 change, 0 destroy`; `APPLY3_EXIT=0`): red (VPC vpc-0140c57f0081acafc, IGW, RTBs, 4 subnets, SGs, endpoints), S3 `docuprocess-dev-{artifacts,docs,frontend}-47cb5959` (PAB, SSE, versionado, CORS docs, política OAC frontend), RDS `docuprocess-dev-mysql` (db.t3.micro, single-AZ, `available`), DynamoDB `documents`/`document_events`, SNS `docuprocess-dev-alerts` + suscripción email a ingesoftv@gmail.com (confirmada; Terraform no puede confirmar correos de terceros), ALB `docuprocess-dev-alb` → TG `docuprocess-dev-app`, ASG `docuprocess-dev-app-v1` (2× t3.micro), Auth/API + worker en mismas instancias.
-- Frontend servido por CloudFront `d39ytkzrdg5rpz.cloudfront.net` (OAC → S3 + `/api/*` → ALB). `/` y `/api/health` → 200 (`{"status":"ok"}`).
+- Frontend de la sesión C3 original: CloudFront `d39ytkzrdg5rpz.cloudfront.net` (OAC → S3 + `/api/*` → ALB). `/` y `/api/health` → 200 (`{"status":"ok"}`). El entorno vigente tras la recreación de B9 usa `d3dsxrvmbdbzfq.cloudfront.net` (ver nota siguiente).
 - E2E desde el navegador: registro/login, PDF DONE (pages=1), PNG DONE (1×1), PDF corrupto FAILED (`unsupported file type`), documentos de un usuario no visibles para otro (404). `document_events`: PENDING→PROCESSING→DONE sin duplicados.
 - Tolerancia a fallo: `terminate-instances` de una instancia → ALB siguió 200 (la instancia restante servía), ASG la reemplazó (5xx transitorios ~1–4 min durante draining/registro, comportamiento esperado), target group quedó 2/2 healthy.
 - ENTREGA: **viernes 13 de noviembre de 2026** (milestone "Entrega 13 nov"). C4 (#23) queda para el 17 nov en cuenta limpia.
 - Pendiente/observaciones para A9: huérfanos sin tag que hicieron fallar la primera verificación de cuenta vacía (apply3 pasó solo tras borrarlos manualmente); tfstate de otra cuenta inconsistente → reset documentado (tfstate `.obsoleto-20261113`, previo `previa-20261112`); SNS exige confirmación manual del buzón (Terraform no puede confirmarla; verificado tras confirmar el correo); CloudFront 504 transitorio con draining; `voc-cancel-cred` a mitad de apply (credenciales voclabs revocadas, relanzar lab + re-plan/apply idempotente); `tfplan*.bin` nunca se commitean.
+- **Recreación para B9 (2026-11-13):** el laboratorio volvió a quedar vacío; al validar B9 se refrescó el estado y se reaplicó el stack (**64 added, 0 changed, 3 destroyed**). IDs vigentes: VPC `vpc-076ffcf575b316a82`, ALB `docuprocess-dev-alb-40967399.us-east-1.elb.amazonaws.com`, CloudFront `d3dsxrvmbdbzfq.cloudfront.net` (distribución `E3GJW49EXZJ2LS`). La evidencia E2E anterior corresponde a la sesión previa de C3; B9 valida la publicación y la invalidación sobre el entorno recreado.
 
 ## 5. Criterios de terminado de B9
 
 | Criterio de la HU | Evidencia | Estado | Última verificación |
 | --- | --- | --- | --- |
-| `./scripts/deploy-frontend.sh` termina sin errores e imprime la URL | Script implementado; la ejecución completa requiere credenciales de la cuenta del estado y una distribución de CloudFront aplicada (B7) | Pendiente (bloqueo C3/B7) | 2026-11-13 |
-| Un cambio visible en `index.html` aparece en CloudFront tras la invalidación | Incluye espera de `invalidation-completed`; prueba E2E pendiente del mismo bloqueo | Pendiente (bloqueo C3/B7) | 2026-11-13 |
-| El bucket no contiene `config.example.js` y sí `config.js` | El script borra el objeto obsoleto y verifica ambos con `head-object` | Implementado (código) | 2026-11-13 |
-| Con credenciales vencidas, el script falla al inicio con un mensaje claro | `aws sts get-caller-identity` se ejecuta antes de Terraform, npm o S3 | Verificado (local) | 2026-11-13 |
-| `bash -n`, ShellCheck y build de Vite | `scripts/deploy-frontend.sh`, `frontend/`; CI ejecuta ShellCheck y `npm run build` | Verificado (local) | 2026-11-13 |
+| `./scripts/deploy-frontend.sh` termina sin errores e imprime la URL | `AWS_PROFILE=academy ./scripts/deploy-frontend.sh` → exit 0; última línea `https://d3dsxrvmbdbzfq.cloudfront.net/`; invalidación `I84XG4B6TMFJ6QIF442PVQEO2F` `Completed` | Verificado (Sandbox) | 2026-11-13 |
+| Un cambio visible en `index.html` aparece en CloudFront tras la invalidación | Marcador `B9-CHECK-SOURCE-2026-11-13T15:05Z` en el fuente → script → invalidación `I6ZD0LMFTHYWIIDT2AAVL6MS1A` `Completed`; `curl` devuelve el marcador. Restauración `I2T0D148DBN71IL0Z55Y8VUT7D`; marcador ausente | Verificado (Sandbox) | 2026-11-13 |
+| El bucket no contiene `config.example.js` y sí `config.js` | `config.js` presente (300 bytes); `config.example.js` ausente; cabeceras verificadas con `head-object` | Verificado (Sandbox) | 2026-11-13 |
+| Con credenciales vencidas, el script falla al inicio con un mensaje claro | `InvalidClientTokenId` en `aws sts get-caller-identity`, antes de Terraform/npm/S3 | Verificado (local) | 2026-11-13 |
+| `bash -n`, ShellCheck y build de Vite | `bash -n` y `shellcheck scripts/*.sh` OK; `npm ci` + `npm run build` OK; CI del PR #52 en verde | Verificado (local + CI) | 2026-11-13 |
 
-**Bloqueo actual:** el estado local de Terraform es de la cuenta `491699813584`, pero las credenciales disponibles son de `556880009270`; además, el estado no contiene la distribución de CloudFront y `cloudfront_distribution_id`/`cloudfront_domain_name` son `null`. El script falla antes de escribir, como se espera. Para cerrar los criterios pendientes hay que alinear cuenta/estado y aplicar B7.
+**Estado:** B9 cerrado. El script se validó con `AWS_PROFILE=academy` (cuenta `491699813584`). El perfil `default` de la máquina apunta a `556880009270` y el script falla de forma segura antes de escribir si la cuenta no coincide con el estado.
 
 ## 6. Riesgos abiertos
 
@@ -87,12 +88,15 @@ Rama `feat/C3-integracion-e2e-una-sola-cuenta`; PR #50 (Closes #16). Aplicado, p
 | Sandbox deniega `point_in_time_recovery` | Sin restauración a un segundo | `enable_point_in_time_recovery = false` |
 | El worker aún no está fusionado en `main` | No hay transiciones `PROCESSING/DONE/FAILED` en la rama base | B5/B6 integran el worker; la bitácora ya tiene el contrato y el endpoint |
 | Fechas y horas reales de la tarea | El tablero puede quedar desactualizado | Issue #7 actualizada al cerrar (formato `YYYY-MM-DD`); el Project no es visible con el token actual |
-| Estado local de Terraform de otra cuenta (`491699813584`) | `plan/apply` falla con las credenciales actuales (`556880009270`) | Usar el estado de la cuenta correcta o `terraform state rm`/importar; nunca aplicar sobre un estado ajeno |
+| Reinicio del laboratorio borra recursos y deja el estado obsoleto | `plan/apply` y el despliegue fallan o apuntan a recursos inexistentes | Usar `AWS_PROFILE=academy`; refrescar el estado (`plan -refresh=true`) y reaplicar; el script valida la cuenta y falla antes de escribir si no coincide |
 | `infra/terraform.tfvars` no se versiona (existe localmente) | El despliegue no es reproducible solo con el repo | Copiar `terraform.tfvars.example`, completar secretos y correo, y mantenerlo fuera de Git |
 
 ## 7. Cómo reproducir la verificación
 
 ```bash
+# En el Sandbox, usar el perfil del laboratorio (cuenta 491699813584)
+export AWS_PROFILE=academy
+
 # Infraestructura
 terraform -chdir=infra fmt -check -recursive
 terraform -chdir=infra init -backend=false
@@ -114,4 +118,10 @@ terraform -chdir=infra plan
 terraform -chdir=infra apply
 aws dynamodb describe-table --table-name documents --query 'Table.[TableStatus,BillingModeSummary.BillingMode]'
 aws dynamodb describe-table --table-name document_events --query 'Table.[TableStatus,BillingModeSummary.BillingMode]'
+
+# Frontend (B9): build, S3, cabeceras e invalidación
+./scripts/deploy-frontend.sh
+BUCKET="$(terraform -chdir=infra output -raw frontend_bucket_name)"
+aws s3 ls "s3://$BUCKET/"
+aws s3api head-object --bucket "$BUCKET" --key config.js --query '[CacheControl,ContentType]'
 ```

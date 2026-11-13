@@ -45,6 +45,8 @@ sean reales y no código muerto:
 - `frontend/package.json`: `config`, `predev` y `prebuild` generan el archivo automáticamente.
 - El script usa `AWS_REGION`/`AWS_DEFAULT_REGION`; si no están definidas, cae a `us-east-1`, el
   valor por defecto del proyecto. Si se cambia `aws_region`, hay que exportar la misma región.
+- El script no elige perfil de AWS: hereda `AWS_PROFILE`. En este repositorio se validó con
+  `AWS_PROFILE=academy` (cuenta `491699813584`, us-east-1).
 
 ## Pruebas
 
@@ -56,6 +58,7 @@ node frontend/scripts/generate-config.mjs
 npm --prefix frontend ci --no-audit --no-fund
 npm --prefix frontend run build
 
+export AWS_PROFILE=academy
 ./scripts/deploy-frontend.sh
 ```
 
@@ -68,52 +71,92 @@ env -u AWS_PROFILE -u AWS_DEFAULT_PROFILE \
   ./scripts/deploy-frontend.sh
 ```
 
-Prueba E2E pendiente (cuando el estado y B7 estén alineados):
+Verificación posterior:
 
 ```bash
-./scripts/deploy-frontend.sh
-aws s3 ls "s3://<bucket>/"
-aws s3api head-object --bucket "<bucket>" --key config.js --query CacheControl
-aws s3api head-object --bucket "<bucket>" --key index.html --query CacheControl
-curl -s "https://<dominio>/" | grep "<texto temporal>"
+BUCKET="$(terraform -chdir=infra output -raw frontend_bucket_name)"
+DIST_ID="$(terraform -chdir=infra output -raw cloudfront_distribution_id)"
+DOMAIN="$(terraform -chdir=infra output -raw cloudfront_domain_name)"
+
+aws s3 ls "s3://$BUCKET/"
+aws s3api head-object --bucket "$BUCKET" --key config.js --query CacheControl
+aws s3api head-object --bucket "$BUCKET" --key index.html --query CacheControl
+aws cloudfront get-invalidation --distribution-id "$DIST_ID" --id "<id>" --query 'Invalidation.Status'
+curl -sS "https://$DOMAIN/" | grep "<texto temporal>"
 ```
 
 ## Resultados de validación (2026-11-13)
 
+### Infraestructura
+
+El laboratorio de AWS Academy se reinició y la cuenta `491699813584` quedó sin los recursos del
+proyecto. Para validar B9 se refrescó el estado y se reaplicó el stack:
+
+- `terraform plan -refresh=true`: **64 to add, 0 change, 3 destroy** (los 3 destroy eran recursos
+  que ya no existían y el refresh retiró del estado).
+- `terraform apply`: **64 added, 0 changed, 3 destroyed**.
+- Outputs usados por B9: bucket `docuprocess-dev-frontend-47cb5959`, distribución
+  `E3GJW49EXZJ2LS`, dominio `d3dsxrvmbdbzfq.cloudfront.net`.
+
+### Publicación
+
+- `./scripts/deploy-frontend.sh` terminó con exit 0 e imprimió como última línea
+  `https://d3dsxrvmbdbzfq.cloudfront.net/`.
+- Invalidación inicial `I84XG4B6TMFJ6QIF442PVQEO2F`: `Completed`.
+- Estado de la distribución: `Deployed`.
+- `config.js`: presente, 300 bytes, `Cache-Control: no-cache`, content type
+  `application/javascript; charset=utf-8`.
+- `index.html`: presente, 8676 bytes, `Cache-Control: no-cache`, content type
+  `text/html; charset=utf-8`.
+- `assets/index-C8LabvmO.js`: `Cache-Control: public,max-age=31536000,immutable`.
+- `config.example.js`: ausente; `head-object` falla como se espera.
+- `https://d3dsxrvmbdbzfq.cloudfront.net/` responde 200, `/config.js` responde 200 y
+  `/api/health` responde 200 sobre la infraestructura recreada.
+
+### Cambio visible en index.html
+
+Se editó `frontend/index.html` para añadir el marcador `B9-CHECK-SOURCE-2026-11-13T15:05Z`, se
+ejecutó el script y se comprobó el resultado:
+
+- Invalidación `I6ZD0LMFTHYWIIDT2AAVL6MS1A`: `Completed`.
+- `curl -sS https://d3dsxrvmbdbzfq.cloudfront.net/` devolvió el marcador.
+- Se revirtió el cambio con `git checkout -- frontend/index.html` y se volvió a ejecutar el
+  script para restaurar el build original.
+- Invalidación de restauración `I2T0D148DBN71IL0Z55Y8VUT7D`: `Completed`; el marcador ya no
+  aparece y el árbol de trabajo quedó limpio.
+
+También se hizo una prueba intermedia publicando un `index.html` temporal directamente en S3
+(marcador `B9-CHECK-2026-11-13T14:45Z`, invalidación `I1RJ88Y4JTR8BUKG2WDYRV0GK0`, `Completed`).
+La prueba desde el código fuente es la evidencia principal porque cubre el flujo completo
+build → S3 → invalidación → CloudFront.
+
+### Seguridad y credenciales
+
+- Con el perfil `default` (cuenta `556880009270`) y el estado de `491699813584`, el script falla
+  **antes de escribir** con un mensaje de cuenta incorrecta. No se aplicó nada sobre el estado
+  ajeno.
+- Con credenciales inválidas (`InvalidClientTokenId`), falla en `aws sts get-caller-identity`,
+  antes de Terraform, npm o S3.
+- No se usan ACL públicas: el bucket es privado y CloudFront accede por OAC.
+
+### Calidad
+
 - `bash -n scripts/deploy-frontend.sh`: OK.
-- `shellcheck scripts/deploy-frontend.sh` (0.11.0): OK, sin advertencias.
-- `node frontend/scripts/generate-config.mjs`: genera `frontend/public/config.js` con
-  `apiBaseUrl: ""`.
-- `npm ci`: 17 paquetes; `npm run build` (Vite 8.3.6): OK; `dist/index.html`, `dist/config.js`,
-  `dist/assets/index-*.js` y `dist/assets/index-*.css`.
-- `grep` sobre `dist/index.html`: carga `/config.js`; `dist/config.js` define
-  `DOCUPROCESS_CONFIG` y `apiBaseUrl: ""`.
-- `./scripts/deploy-frontend.sh` con las credenciales actuales: **falla antes de escribir** con
-  `las credenciales son de la cuenta 556880009270, pero el estado de Terraform pertenece a
-  491699813584`, que es el comportamiento seguro esperado.
-- Credenciales inválidas: **falla en el primer paso** con `InvalidClientTokenId` y un mensaje que
-  indica renovar la sesión de AWS Academy, antes de Terraform, npm o S3.
+- `shellcheck scripts/*.sh`: OK, sin advertencias.
+- `terraform -chdir=infra fmt -check -recursive`: OK.
+- `npm ci` y `npm run build` (Vite 8.3.6): OK.
+- CI del PR #52: Frontend Vite build, ShellCheck y Terraform fmt+validate en verde.
 
-## Bloqueo actual y pendientes
+## Estado final
 
-El estado local de Terraform pertenece a la cuenta `491699813584`, pero las credenciales
-disponibles son de `556880009270`. Además, el estado no contiene la distribución de CloudFront:
-`cloudfront_distribution_id` y `cloudfront_domain_name` son `null` y solo aparecen el OAC y la
-cache policy. Por eso no se puede demostrar todavía:
-
-- la ejecución completa con URL final;
-- el cambio visible en `index.html` tras la invalidación;
-- el contenido real del bucket.
-
-Para cerrarlo hay que usar credenciales de la cuenta dueña del estado (o recrear/importar el
-estado en la cuenta actual) y aplicar B7. El script ya falla de forma segura mientras eso no esté
-resuelto; no se debe aplicar el estado de 491 con credenciales de 556.
+B9 queda cerrado y demostrado en AWS. No hay bloqueos pendientes para la publicación del
+frontend. La guía de despliegue ampliada y el resto del troubleshooting corresponden a A9/C4.
 
 ## Criterios de terminado
 
-| Criterio | Estado |
-| --- | --- |
-| `./scripts/deploy-frontend.sh` termina sin errores e imprime la URL | Pendiente por C3/B7 |
-| Un cambio en `index.html` aparece tras la invalidación | Pendiente por C3/B7 |
-| El bucket no tiene `config.example.js` y sí `config.js` | Implementado y verificado por el script al ejecutarse |
-| Credenciales vencidas fallan al inicio con mensaje claro | Verificado localmente |
+| Criterio | Evidencia | Estado |
+| --- | --- | --- |
+| `./scripts/deploy-frontend.sh` termina sin errores e imprime la URL | Exit 0; última línea `https://d3dsxrvmbdbzfq.cloudfront.net/` | Verificado |
+| Un cambio en `index.html` aparece tras la invalidación | Marcador de origen + invalidación `I6ZD0LMFTHYWIIDT2AAVL6MS1A`; `curl` devuelve el marcador | Verificado |
+| El bucket no tiene `config.example.js` y sí `config.js` | `head-object` de `config.js` OK; `config.example.js` ausente | Verificado |
+| Credenciales vencidas fallan al inicio con mensaje claro | `InvalidClientTokenId` antes de Terraform/npm/S3 | Verificado |
