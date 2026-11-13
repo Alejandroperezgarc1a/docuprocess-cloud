@@ -42,7 +42,7 @@
 | --- | --- |
 | SNS `PendingConfirmation` (el correo nunca llega) | Confirmar la suscripción **antes** de presentar; entregas 3/0 una vez confirmada |
 | Algunas sesiones del Sandbox pueden denegar APIs de lectura (`Describe*`, `LookupEvents`, `GetMetricStatistics`) | En las sesiones de entrega respondieron; si vuelve a pasar, usar la consola para ver alarmas/eventos (ver la evidencia de monitoreo) |
-| `TransactWriteItems` denegado por SCP | `enable_dynamodb_transactions=false` (escritura secuencial; deuda documentada) |
+| Acción `dynamodb:TransactWriteItems` dentro de una resource policy (inválida) | Se autoriza por ítem con `PutItem`/`UpdateItem`; `enable_dynamodb_transactions=false` solo como respaldo |
 | PROCESSING huérfano (worker muerto tras el claim) | Reset con `aws dynamodb update-item ... status=PENDING` (ver `docs/guias/despliegue.md`) |
 | Credenciales expiradas (lab se reinicia) | Volver a copiar del lab (5 min); `invoke new apply` es idempotente |
 | `cloudtrail:CreateTrail` denegado | `event-history` (90 días vía `verify-cloudtrail.sh`); ya documentado |

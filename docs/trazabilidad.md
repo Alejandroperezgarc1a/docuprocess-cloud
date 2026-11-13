@@ -84,7 +84,7 @@ Rama `feat/C3-integracion-e2e-una-sola-cuenta`; PR #50 (Closes #16). Aplicado, p
 | Riesgo | Impacto | Mitigación |
 | --- | --- | --- |
 | SCP deniega `dynamodb:PutResourcePolicy` | El rol no puede leer/escribir las tablas | No hay plan B sin IAM propio; habría que escalar el permiso al administrador del Sandbox |
-| SCP deniega las escrituras transaccionales (acciones de ítem como `PutItem`/`UpdateItem`) | El alta no es atómica | `enable_dynamodb_transactions = false` (escritura secuencial; deuda documentada en §12) |
+| Una política llegara a denegar las escrituras de ítems de la transacción (`PutItem`/`UpdateItem`) | El alta no es atómica | `enable_dynamodb_transactions = false` (escritura secuencial; deuda documentada en §12). En el Sandbox no ocurre: las transacciones funcionan |
 | Sandbox deniega `point_in_time_recovery` | Sin restauración a un segundo | `enable_point_in_time_recovery = false` |
 | El worker aún no está fusionado en `main` | No hay transiciones `PROCESSING/DONE/FAILED` en la rama base | B5/B6 integran el worker; la bitácora ya tiene el contrato y el endpoint |
 | Fechas y horas reales de la tarea | El tablero puede quedar desactualizado | Issue #7 actualizada al cerrar (formato `YYYY-MM-DD`); el Project no es visible con el token actual |

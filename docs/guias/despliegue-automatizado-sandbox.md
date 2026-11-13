@@ -85,7 +85,7 @@ agrega 5–15 minutos de diagnóstico e importación (§2.4 y §6).
 | IaC con Terraform o CloudFormation | Terraform modular con 8 módulos | `infra/main.tf` |
 | Sin SSH ni bastión | SSM Session Manager con el rol preexistente `AmazonSSMRoleForInstancesQuickSetup` | `infra/modules/compute/`, §5.6 |
 | Credenciales temporales del Learner Lab | El despliegue se ejecuta desde la estación con un perfil de AWS CLI; no hay credenciales en el repositorio | §2 |
-| Algunas acciones están denegadas por la SCP | Se documentan fallbacks: `event-history`, sin `instance_refresh`, sin Object Lock, transacciones desactivables | §3.4 y §6 |
+| Algunas acciones están denegadas por la SCP | Se documentan fallbacks: `event-history`, sin `instance_refresh` y sin Object Lock; las transacciones se autorizan por ítem con `PutItem`/`UpdateItem` | §3.4 y §6 |
 
 > **Importante:** el Sandbox no es un entorno de producción. No se debe prometer alta
 > disponibilidad real: RDS es Single-AZ por restricción, CloudFront usa su certificado por
@@ -351,7 +351,7 @@ menos 32 caracteres.
 | `asg_desired_capacity` | `2` | Mantener 2 antes de la prueba de carga |
 | `root_volume_size` | `20` GB | Nunca por encima de 35 GB (`gp2`) |
 | `db_name` / `db_username` | `docuprocess` / `docuadmin` | Solo si hay una razón; no afecta la demo |
-| `enable_dynamodb_transactions` | `true` | Poner `false` si la SCP deniega escrituras transaccionales |
+| `enable_dynamodb_transactions` | `true` | Dejar `true`; `false` es solo respaldo si una política deniega `PutItem`/`UpdateItem` |
 | `enable_point_in_time_recovery` | `true` | Poner `false` si el Sandbox deniega PITR |
 | `cloudtrail_mode` | `event-history` | Dejar así; `trail` requiere permisos que el Sandbox deniega |
 | `force_destroy_buckets` | `true` | Dejar así para poder destruir el laboratorio |
@@ -364,7 +364,7 @@ trae los fallbacks:
 
 | Si falla… | Cambia a… | Efecto |
 | --- | --- | --- |
-| `dynamodb:TransactWriteItems` o escrituras transaccionales | `enable_dynamodb_transactions = false` | La API deja de usar transacciones y hace las escrituras por separado |
+| Las escrituras de ítems de la transacción (`PutItem`/`UpdateItem`) | `enable_dynamodb_transactions = false` | La API deja de usar transacciones y hace las escrituras por separado. No aplica al Sandbox: las transacciones funcionan |
 | `dynamodb:UpdateContinuousBackups` / PITR | `enable_point_in_time_recovery = false` | Se desactiva PITR; las tablas siguen funcionando |
 | `cloudtrail:CreateTrail` | `cloudtrail_mode = "event-history"` | Se usa el historial de eventos de 90 días, sin trail persistente |
 | `autoscaling:StartInstanceRefresh` | No hay variable: el módulo no usa `instance_refresh` | El reemplazo se hace creando un ASG nuevo o terminando instancias de una en una |
@@ -828,7 +828,7 @@ baja. No interpretes esos 15 minutos como un fallo.
 | CloudFront 504 intermitente | ALB en draining durante reemplazo | Esperar 1–2 min y reintentar; revisar target group | No probar durante un reemplazo |
 | SNS en `PendingConfirmation` | Correo no confirmado | Confirmar el correo; revisar spam | Confirmar antes de la demo |
 | Documento atascado en `PROCESSING` | Worker caído o excepción | SSM + `journalctl`; reiniciar el worker; §6.6 | Verificar worker activo |
-| `503` al crear documento | Transacciones DynamoDB denegadas | `enable_dynamodb_transactions = false` y aplicar | Tener el flag listo |
+| `503` al crear documento | Error de DynamoDB o condición transaccional fallida | Revisar logs; si persiste, `enable_dynamodb_transactions = false` como respaldo | Tener el flag listo |
 | PUT prefirmado `403` | URL expirada, header o CORS | Regenerar URL, usar `Content-Type` exacto, revisar CORS | Subir en menos de 15 min |
 | Pantalla en blanco | Frontend sin build o `config.js` viejo | `./scripts/deploy-frontend.sh`; revisar consola | Publicar frontend después del apply |
 | `npm ERR! engine` | Node < 22 | `node -v`; usar Node 24 | Fijar Node 24 |
@@ -874,20 +874,21 @@ Después de cada import, ejecuta `terraform -chdir=infra plan -refresh=true` y c
 plan solo crea lo que falta. Si el recurso no pertenece al proyecto, elimínalo con la consola o
 con AWS CLI y vuelve a aplicar.
 
-### 6.4 Acciones denegadas por la SCP
+### 6.4 Acciones denegadas por la SCP y límites del Sandbox
 
 | Error | Fallback |
 | --- | --- |
 | `cloudtrail:CreateTrail` | `cloudtrail_mode = "event-history"`; verificar con `verify-cloudtrail.sh` |
 | `s3:GetBucketObjectLockConfiguration` | El módulo ya usa `awscc_s3_bucket`; no cambies a `aws_s3_bucket` |
 | `autoscaling:StartInstanceRefresh` | No usar `instance_refresh`; reemplazar con ASG nuevo o terminación controlada |
-| `dynamodb:TransactWriteItems` o acciones de ítem | `enable_dynamodb_transactions = false` |
+| `dynamodb:TransactWriteItems` dentro de una resource policy (acción inválida) | Quitarla de la política: DynamoDB autoriza cada ítem con `PutItem`/`UpdateItem`; `enable_dynamodb_transactions = false` queda solo como respaldo |
 | `dynamodb:UpdateContinuousBackups` | `enable_point_in_time_recovery = false` |
 | `iam:CreateRole` / `iam:GetRole` | No se crean roles; se usa el instance profile preexistente |
 
-> `dynamodb:TransactWriteItems` no es una acción IAM válida por sí sola; la SCP deniega las
-> acciones de escritura de ítems que usa la transacción. El fallback correcto es desactivar la
-> transacción en la aplicación, no añadir esa cadena a una política.
+> `dynamodb:TransactWriteItems` no es una acción válida en una política; la transacción se
+> autoriza por ítem con `PutItem`/`UpdateItem`. Las transacciones funcionan en el Sandbox
+> (probadas el 11 y el 13 de noviembre); `enable_dynamodb_transactions = false` queda solo como
+> respaldo.
 
 ### 6.5 Aplicación no responde o instancias unhealthy
 

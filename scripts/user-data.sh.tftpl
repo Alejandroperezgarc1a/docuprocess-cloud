@@ -59,9 +59,10 @@ DB_USER=${db_user}
 DB_PASSWORD=$(quote "$DB_PASSWORD")
 JWT_SECRET=$(quote "$JWT_SECRET")
 # DDB_TABLE, DDB_EVENTS_TABLE y DOCS_BUCKET son obligatorias para la API: si falta
-# alguna, el proceso no arranca. DDB_TRANSACTIONS=false es el fallback del Sandbox
-# (escritura secuencial en vez de una transacción); solo se usa si una SCP deniega
-# las escrituras transaccionales, no en una cuenta normal.
+# alguna, el proceso no arranca. DDB_TRANSACTIONS=false es un respaldo
+# (escritura secuencial en vez de una transacción); las transacciones funcionan en el
+# Sandbox —probadas el 11 y el 13 de noviembre—; solo se usa si una política deniega
+# las acciones de ítem de la transacción.
 DDB_TABLE=${ddb_table}
 DDB_EVENTS_TABLE=${ddb_events_table}
 DDB_TRANSACTIONS=${ddb_transactions}
