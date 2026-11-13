@@ -95,14 +95,14 @@ proyecto. Para validar B9 se refrescó el estado y se reaplicó el stack:
 - `terraform plan -refresh=true`: **64 to add, 0 change, 3 destroy** (los 3 destroy eran recursos
   que ya no existían y el refresh retiró del estado).
 - `terraform apply`: **64 added, 0 changed, 3 destroyed**.
-- Outputs usados por B9: bucket `docuprocess-dev-frontend-47cb5959`, distribución
-  `E3GJW49EXZJ2LS`, dominio `d3dsxrvmbdbzfq.cloudfront.net`.
+- Outputs usados por B9: bucket `docuprocess-dev-frontend-<BUCKET_SUFFIX>`, distribución
+  `<CLOUDFRONT_DISTRIBUTION_ID>`, dominio `<CLOUDFRONT_DOMAIN>`.
 
 ### Publicación
 
 - `./scripts/deploy-frontend.sh` terminó con exit 0 e imprimió como última línea
-  `https://d3dsxrvmbdbzfq.cloudfront.net/`.
-- Invalidación inicial `I84XG4B6TMFJ6QIF442PVQEO2F`: `Completed`.
+  `https://<CLOUDFRONT_DOMAIN>/`.
+- Invalidación inicial `<INVALIDATION_ID>`: `Completed`.
 - Estado de la distribución: `Deployed`.
 - `config.js`: presente, 300 bytes, `Cache-Control: no-cache`, content type
   `application/javascript; charset=utf-8`.
@@ -110,7 +110,7 @@ proyecto. Para validar B9 se refrescó el estado y se reaplicó el stack:
   `text/html; charset=utf-8`.
 - `assets/index-C8LabvmO.js`: `Cache-Control: public,max-age=31536000,immutable`.
 - `config.example.js`: ausente; `head-object` falla como se espera.
-- `https://d3dsxrvmbdbzfq.cloudfront.net/` responde 200, `/config.js` responde 200 y
+- `https://<CLOUDFRONT_DOMAIN>/` responde 200, `/config.js` responde 200 y
   `/api/health` responde 200 sobre la infraestructura recreada.
 
 ### Cambio visible en index.html
@@ -118,11 +118,11 @@ proyecto. Para validar B9 se refrescó el estado y se reaplicó el stack:
 Se editó `frontend/index.html` para añadir el marcador `B9-CHECK-SOURCE-2026-11-13T15:05Z`, se
 ejecutó el script y se comprobó el resultado:
 
-- Invalidación `I6ZD0LMFTHYWIIDT2AAVL6MS1A`: `Completed`.
-- `curl -sS https://d3dsxrvmbdbzfq.cloudfront.net/` devolvió el marcador.
+- Invalidación `<INVALIDATION_ID_2>`: `Completed`.
+- `curl -sS https://<CLOUDFRONT_DOMAIN>/` devolvió el marcador.
 - Se revirtió el cambio con `git checkout -- frontend/index.html` y se volvió a ejecutar el
   script para restaurar el build original.
-- Invalidación de restauración `I2T0D148DBN71IL0Z55Y8VUT7D`: `Completed`; el marcador ya no
+- Invalidación de restauración `<INVALIDATION_ID_RESTORE>`: `Completed`; el marcador ya no
   aparece y el árbol de trabajo quedó limpio.
 
 También se hizo una prueba intermedia publicando un `index.html` temporal directamente en S3
@@ -156,7 +156,7 @@ frontend. La guía de despliegue ampliada y el resto del troubleshooting corresp
 
 | Criterio | Evidencia | Estado |
 | --- | --- | --- |
-| `./scripts/deploy-frontend.sh` termina sin errores e imprime la URL | Exit 0; última línea `https://d3dsxrvmbdbzfq.cloudfront.net/` | Verificado |
-| Un cambio en `index.html` aparece tras la invalidación | Marcador de origen + invalidación `I6ZD0LMFTHYWIIDT2AAVL6MS1A`; `curl` devuelve el marcador | Verificado |
+| `./scripts/deploy-frontend.sh` termina sin errores e imprime la URL | Exit 0; última línea `https://<CLOUDFRONT_DOMAIN>/` | Verificado |
+| Un cambio en `index.html` aparece tras la invalidación | Marcador de origen + invalidación `<INVALIDATION_ID_2>`; `curl` devuelve el marcador | Verificado |
 | El bucket no tiene `config.example.js` y sí `config.js` | `head-object` de `config.js` OK; `config.example.js` ausente | Verificado |
 | Credenciales vencidas fallan al inicio con mensaje claro | `InvalidClientTokenId` antes de Terraform/npm/S3 | Verificado |

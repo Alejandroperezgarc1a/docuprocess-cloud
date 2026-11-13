@@ -9,7 +9,6 @@ paths = [
   '''app/api/tests/.*''',
   '''\.env\.example$''',
   '''infra/terraform\.tfvars\.example$''',
-  '''docs/.*''',
 ]
 regexes = [
   '''test-password''',
