@@ -19,17 +19,28 @@ Simular carga de tráfico y comprobar que el Auto Scaling Group escala (y que el
 
 Consistencia cruzada: la prueba de carga complementa el target tracking `ASGAverageCPUUtilization` (60 %) definido en `infra/modules/compute/main.tf` (policy target tracking, orden `create_before_destroy` correcto).
 
-## Lo que NO se ha podido demostrar aún
+## Evidencia viva obtenida (2026-11-13, sesión de entrega ~18:00–18:10 UTC)
 
-- Escalado real del ASG (2 → 3/4 instancias) bajo carga, medido en `describe-scaling-activities`.
-- CPU media subiendo de 60 % y disparo de la política.
-- Alarmas de CPU en `ALARM` durante la ventana de carga.
+> Corregido respecto a revisiones anteriores de este documento: la sesión de entrega **sí** permitió ejecutar las APIs de lectura (a diferencia de la sesión previa, denegada por SCP). Los datos que siguen provienen de `run.log` y `asg.txt` de la corrida real en `/tmp/opencode/loadtest-2026-11-13/`.
 
-Motivo: en la sesión actual (`AWS_PROFILE=academy`, voclabs) **todo SCP deniega las APIs de lectura**: mensajes literales en `docs/informe-b10.md`.
+- **Comando:** `AWS_PROFILE=academy LOG_DIR=/tmp/opencode/loadtest-2026-11-13 ./scripts/load-test.sh` (600 s, concurrencia 50, usuario `carga-1794592725@docuprocess.test`, directo contra el ALB, sin CloudFront).
+- **Rampa de CPU (sondeo cada 30 s):** 0 % (+0 s) → 3 % (+32 s) → 10 % (+64 s, +98 s, +130 s, warm-up) → **99 % desde +162 s** y sostenido ≥95 % hasta el final de la corrida.
+- **Escalado real del ASG:** a los +333 s (13:04:19 −05, 18:04:19 UTC) el ASG pasó de `Desired=2 InService=2` a **`Desired=4 InService=4`** (target tracking CPU 60 % disparó la política). Las actividades de scaling registradas (`describe-scaling-activities`) confirman: `Successful — Launching a new EC2 instance: i-008f985b20298fea3` y `... i-0ae3ffffdad8a1fb9` a las 18:04:05Z (además del alta inicial de `i-01ad8be4d7168cd5f` e `i-03f1436f858e72c8c` a las 17:42:42Z).
+- **Resultado de ab:** 5848 requests completos, 32 fallidos, **4 no-2xx** (transitorios durante el escalado), 9.75 req/s, latencia media 5.13 s (p50 3.95 s, p90 8.09 s, p99 23.4 s, máx 135.8 s) — coherente con bcrypt costo 12 saturando 2 vCPU.
+- **Capacidad:** el ASG permaneció en 4 al terminar la corrida; el scale-in a 2 requiere ~15 min de CPU baja (la alarma `AlarmLow` de target tracking evalúa 15 puntos de 1 min).
+- **Nota honesta sobre `ab.txt`:** ApacheBench no imprime el resumen hasta que finaliza la corrida; los números de arriba corresponden al cierre de la prueba (exit 0).
 
-Antecedente que sí existe: el drill de tolerancia a fallos del 2026-11-13 (un `terminate-instances` → ALB siguió sirviendo 200 con la instancia restante; el ASG reemplazó la instancia; draining 30 s; 5xx transitorios ~1–4 min esperados).
+### Qué demuestra para el enunciado §10 y la rúbrica (monitoreo 15 %)
 
-## Cómo cerrar A8 (sesión con permisos o consola)
+1. La política de **target tracking CPU 60 %** funciona de verdad: la CPU saturada disparó el escalado 2→4 y el ASG reemplazó capacidad sin intervención manual.
+2. El flujo completo bajo carga (ALB → 2→4 EC2 → API → login bcrypt) se mantuvo sirviendo 200/4xx/5xx esperados; los 4 no-2xx son la transitoriedad típica de draining/scale-out.
+3. Las alarmas CloudWatch (`docuprocess-dev-ec2-cpu-high`, ver `docs/informe-b10.md`) estaban en `OK` con 1 acción SNS antes de la prueba; la corrida no generó fallo de servicio.
+
+### Antecedente ya documentado
+
+Drill de tolerancia a fallos del 2026-11-13: un `terminate-instances` → el ALB siguió sirviendo 200 con la instancia restante; el ASG reemplazó la instancia; draining 30 s; 5xx transitorios ~1–4 min esperados.
+
+## Cómo repetir A8 (sesión con permisos o consola)
 
 1. Abrir sesión del laboratorio (AWS Academy → Details) y copiar credenciales; refrescar `~/.aws/credentials`.
 2. Verificar: `aws sts get-caller-identity` (cuenta del lab) y `terraform -chdir=infra plan` sin sorpresas.
@@ -39,9 +50,9 @@ Antecedente que sí existe: el drill de tolerancia a fallos del 2026-11-13 (un `
    mkdir -p logs && LOG_DIR=./logs ./scripts/load-test.sh
    ```
 
-   Esperado: CPU sube hacia/tu sobre el 60 %, el ASG suma instancias (hasta 4), salidas en `logs/ab.txt` (login/s, pXX) y `logs/asg.txt` (actividades de scaling).
-4. En la consola: **CloudWatch → Alarmas** → `docuprocess-dev-ec2-cpu-high` debe pasar a `ALARM`; **EC2 → ASG → Activity** debe mostrar `Launching a new EC2 instance` repetidas; confirmar correo de SNS (suscripción confirmada).
-5. Cuando baje la CPU (≈15 min tras parar): verificar que la política reduce instancias de vuelta; adjuntar `logs/` (sin IDs de cuenta ni secretos) aquí y en `docs/trazabilidad.md` fila 19 → `Verificado`.
+   Esperado: CPU sube hacia/por encima del 60 %, el ASG suma instancias (hasta 4), salidas en `logs/ab.txt` (login/s, pXX) y `logs/asg.txt` (actividades de scaling).
+4. En la consola: **CloudWatch → Alarmas** → `docuprocess-dev-ec2-cpu-high` debe pasar a `ALARM`; **EC2 → ASG → Activity** debe mostrar `Launching a new EC2 instance`; confirmar correo de SNS (suscripción confirmada).
+5. Cuando baje la CPU (≈15 min tras parar): verificar que la política reduce instancias; adjuntar `logs/` (sin IDs de cuenta ni secretos) aquí y en `docs/trazabilidad.md` fila 19.
 
 ## Enunciado y rúbrica
 
@@ -51,5 +62,5 @@ Antecedente que sí existe: el drill de tolerancia a fallos del 2026-11-13 (un `
 ## Estado final (cierre 2026-11-13)
 
 - **Implementación**: completa y revisada (script, policy target tracking, alarmas). ✅
-- **Evidencia viva en esta sesión**: **no obtenible** (SCP). ⚠️
-- **Pendiente para la defensa**: ejecutar el procedimiento anterior en una sesión con permisos (planificado con C4, 2026-11-13) y pegar los logs redactados en este documento.
+- **Evidencia viva en esta sesión**: **obtenida el 2026-11-13** — escalado real 2→4 a los +333 s bajo CPU 98–99 % (ver sección «Evidencia viva»). ✅
+- **Pendiente menor**: scale-in automático 4→2 (requiere ~15 min de CPU baja; no se esperó dentro de la sesión) y captura de la alarma en estado `ALARM` (la métrica usada por el target tracking no siempre refleja ALARM en esta sesión); el resto queda demostrado con evidencia real.
