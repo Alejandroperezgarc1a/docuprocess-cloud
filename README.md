@@ -79,7 +79,7 @@ app/api/            API REST en Node.js + TypeScript (src/, tests/)
 app/worker/         worker de procesamiento asíncrono en Node.js + TypeScript
 frontend/           sitio estático construido con Vite
 scripts/            userData, empaquetado, publicación del frontend y prueba de carga
-docs/               arquitectura, RDS vs. DynamoDB, trazabilidad y guía de despliegue
+docs/               arquitectura, RDS vs. DynamoDB, trazabilidad y guías de despliegue y pruebas
 ```
 
 ## Equipo y responsabilidades
@@ -104,21 +104,21 @@ La semana del 2 al 6 de noviembre queda limitada a las fundaciones. B2, B3, B6, 
 
 ## Cómo desplegar
 
-La guía completa (requisitos, credenciales del Sandbox y solución de problemas) llega con la tarea A9. El orden mínimo es:
+La guía completa paso a paso (credenciales del Sandbox, verificación, destrucción y solución de problemas) está en [`docs/guias/despliegue.md`](docs/guias/despliegue.md). El orden resumido es:
 
 ```bash
 aws sts get-caller-identity                                 # confirmar la cuenta del Sandbox antes de aplicar
-# Terraform y los scripts usan la cadena de credenciales por defecto ([default]).
-# Si prefieres un perfil concreto: export AWS_PROFILE=<perfil> o define aws_profile en terraform.tfvars.
-cp infra/terraform.tfvars.example infra/terraform.tfvars   # completar alert_email, db_password y jwt_secret
+export AWS_PROFILE=academy                                   # perfil del laboratorio (o cadena por defecto, ver la guía)
+cp infra/terraform.tfvars.example infra/terraform.tfvars    # completar alert_email, db_password y jwt_secret
 ./scripts/package-app.sh                                    # genera dist/docuprocess-app.zip (Node 24 + zip)
-terraform -chdir=infra init
-terraform -chdir=infra apply
+terraform -chdir=infra init && terraform -chdir=infra apply
 ./scripts/deploy-frontend.sh                                # publica frontend/dist y refresca CloudFront
 # Revisar el correo de AWS y confirmar la suscripción de SNS antes de probar las alertas.
 ```
 
-`deploy-frontend.sh` comprueba las credenciales y la cuenta, lee los outputs de B2/B7, genera `frontend/public/config.js`, construye el frontend y publica `frontend/dist/` con cabeceras de caché e invalidación. Falla antes de escribir si el estado de Terraform es de otra cuenta o si B7 no está aplicado. El script hereda `AWS_PROFILE`; en el Sandbox se validó con `AWS_PROFILE=academy` (cuenta `491699813584`). La guía completa y el troubleshooting se completan con A9; las decisiones y la evidencia de B9 están en `docs/informe-b9.md`.
+`deploy-frontend.sh` comprueba las credenciales y la cuenta, lee los outputs de B2/B7, genera `frontend/public/config.js`, construye el frontend y publica `frontend/dist/` con cabeceras de caché e invalidación. Falla antes de escribir si el estado de Terraform es de otra cuenta o si B7 no está aplicado. Las decisiones y la evidencia de B9 están en `docs/informe-b9.md`.
+
+La prueba de carga del ASG está en `scripts/load-test.sh` (sección 5 de la guía).
 
 `package-app.sh` va **antes** de cada `apply` que deba llevar código nuevo: Terraform sube el zip con su hash en el nombre y, si cambió, reemplaza las instancias sin caída del servicio.
 
@@ -157,7 +157,7 @@ set -a; . ../../.env; set +a
 node dist/worker.js
 ```
 
-Pruebas unitarias: `npm test` (28). Integración con DynamoDB Local y S3 real:
+Pruebas: API 68 y worker 28 en verde (`npm test` en cada componente). Integración con DynamoDB Local y S3 real:
 `RUN_INTEGRATION=1 DOCS_BUCKET=<bucket> npm run test:integration` (requiere `npm run build`).
 Cubre 20 documentos con dos workers, objeto ausente dentro del timeout y objeto vencido
 (`FAILED "upload timeout"`). Si defines `SNS_TOPIC_ARN`, además verifica la publicación SNS
