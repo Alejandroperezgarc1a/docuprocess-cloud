@@ -35,7 +35,7 @@ infraestructura se crea con **Terraform modular** y el laboratorio se opera sin 
 **Duración realista:** 30–45 minutos para el primer despliegue completo, más el tiempo de
 confirmación del correo SNS. La creación de RDS, CloudFront y el reemplazo inicial del ASG es la
 parte más lenta; no es un proceso de 15 minutos. Si el laboratorio ya trae recursos huérfanos,
-agrega 5–15 minutos de diagnóstico e importación (§2.4 y §7).
+agrega 5–15 minutos de diagnóstico e importación (§2.4 y §6).
 
 ### Ruta rápida
 
@@ -85,11 +85,11 @@ agrega 5–15 minutos de diagnóstico e importación (§2.4 y §7).
 | IaC con Terraform o CloudFormation | Terraform modular con 8 módulos | `infra/main.tf` |
 | Sin SSH ni bastión | SSM Session Manager con el rol preexistente `AmazonSSMRoleForInstancesQuickSetup` | `infra/modules/compute/`, §5.6 |
 | Credenciales temporales del Learner Lab | El despliegue se ejecuta desde la estación con un perfil de AWS CLI; no hay credenciales en el repositorio | §2 |
-| Algunas acciones están denegadas por la SCP | Se documentan fallbacks: `event-history`, sin `instance_refresh`, sin Object Lock, transacciones desactivables | §3.4 y §7 |
+| Algunas acciones están denegadas por la SCP | Se documentan fallbacks: `event-history`, sin `instance_refresh`, sin Object Lock, transacciones desactivables | §3.4 y §6 |
 
 > **Importante:** el Sandbox no es un entorno de producción. No se debe prometer alta
 > disponibilidad real: RDS es Single-AZ por restricción, CloudFront usa su certificado por
-> defecto y el estado de Terraform es local. La guía explica estas salvedades en §8.4.
+> defecto y el estado de Terraform es local. La guía explica estas salvedades en §7.4.
 
 ### 1.3 Qué significa “despliegue automatizado” en este proyecto
 
@@ -295,7 +295,7 @@ terraform -chdir=infra plan -refresh=true
 ```
 
 No hace falta destruir nada. Terraform refresca el estado con las credenciales nuevas. Si el
-laboratorio cambió de cuenta, el estado anterior ya no sirve: sigue §6.6.
+laboratorio cambió de cuenta, el estado anterior ya no sirve: no lo reutilices y empieza con un estado nuevo (revisa §2.3).
 
 ---
 
@@ -336,7 +336,7 @@ tenga al menos 12 caracteres ASCII y que no contenga `/`, `@` ni `"`; `jwt_secre
 menos 32 caracteres.
 
 > Los secretos quedan en el `terraform.tfstate` local y en los parámetros SSM. No compartas el
-> estado, no lo subas al repositorio y bórralo después de destruir el laboratorio (§6.5).
+> estado, no lo subas al repositorio y bórralo cuando ya no necesites el entorno.
 
 ### 3.3 Variables que más importan
 
@@ -483,7 +483,7 @@ El script:
 7. Crea una invalidación `/*` y espera a que termine.
 8. Imprime la URL final.
 
-Abre `app_url` en el navegador. Si ves una pantalla en blanco, revisa §7.
+Abre `app_url` en el navegador. Si ves una pantalla en blanco, revisa §6.
 
 ### 4.7 Confirmar la suscripción de SNS
 
@@ -788,7 +788,7 @@ baja. No interpretes esos 15 minutos como un fallo.
 | --- | --- | --- |
 | `/api/health` 200 y `/api/ready` 503 | API viva, MySQL no disponible | Revisar RDS, security group y credenciales |
 | Target group con targets `unhealthy` | La API no responde en el puerto 8000 | SSM + `journalctl`; revisar userData y artefacto |
-| Documento `PROCESSING` por más de 5 min | Worker detenido o error de procesamiento | §7.6 |
+| Documento `PROCESSING` por más de 5 min | Worker detenido o error de procesamiento | §6.6 |
 | Documento `FAILED` con PDF válido | Tipo/contenido rechazado o error del parser | Revisar eventos y logs del worker |
 | `PendingConfirmation` en SNS | Nadie confirmó el correo | Confirmar y repetir |
 | Alarma en `INSUFFICIENT_DATA` | Aún no hay métricas suficientes | Esperar 2 periodos; es normal al inicio |
@@ -796,140 +796,25 @@ baja. No interpretes esos 15 minutos como un fallo.
 
 ---
 
-## 6. Operación, actualización y destrucción
+## 6. Solución de problemas
 
-### 6.1 Re-desplegar backend o worker
-
-```bash
-./scripts/package-app.sh
-terraform -chdir=infra plan -out=tfplan
-terraform -chdir=infra apply tfplan
-rm -f infra/tfplan
-```
-
-Espera a que el ASG reemplace las instancias y el target group vuelva a 2/2 `healthy`. No
-ejecutes la prueba de carga durante el reemplazo: mezclarías CPU de arranque con la métrica de
-escalado.
-
-### 6.2 Re-desplegar solo el frontend
-
-```bash
-./scripts/deploy-frontend.sh
-```
-
-Si cambiaste `config.js` o `index.html`, la invalidación `/*` ya se encarga de que CloudFront no
-sirva la versión anterior. Los assets con hash se pueden cachear de forma inmutable.
-
-### 6.3 Rotar secretos
-
-1. Cambia `db_password` o `jwt_secret` en `terraform.tfvars`.
-2. Aplica:
-
-```bash
-terraform -chdir=infra plan
-terraform -chdir=infra apply
-```
-
-3. Terraform crea una nueva versión de los parámetros SSM. Las instancias **no** leen el
-   secreto en caliente: lo hacen en el userData al arrancar. Para que lo tomen, reemplaza las
-   instancias de una en una:
-
-```bash
-ASG="$(terraform -chdir=infra output -raw asg_name)"
-INSTANCE_ID="$(aws autoscaling describe-auto-scaling-groups \
-  --auto-scaling-group-names "$ASG" \
-  --query 'AutoScalingGroups[0].Instances[0].InstanceId' --output text)"
-aws autoscaling terminate-instance-in-service \
-  --instance-id "$INSTANCE_ID" \
-  --no-should-decrement-desired-capacity
-```
-
-Espera a que el ASG reponga la instancia y quede `Healthy` antes de repetir con la otra. No
-cambies `db_password` sin actualizar también la contraseña real de RDS: el proyecto usa la misma
-variable para crear RDS y para el parámetro SSM, pero un cambio manual en RDS no se sincroniza
-solo.
-
-### 6.4 Reemplazar instancias sin `instance_refresh`
-
-El módulo no usa `instance_refresh` porque la SCP del Sandbox deniega
-`autoscaling:StartInstanceRefresh`. Las opciones seguras son:
-
-- **Cambio de launch template:** `package-app.sh` cambia el hash del artefacto; Terraform crea
-  un ASG nuevo con nombre `...-app-v<versión>` y elimina el anterior con
-  `create_before_destroy`.
-- **Terminación controlada:** termina una instancia `InService` y espera el reemplazo antes de
-  tocar la siguiente.
-- **Destruir y recrear:** solo para una demo desde cero; no es un despliegue sin caída.
-
-### 6.5 Destruir y limpiar
-
-```bash
-terraform -chdir=infra plan -destroy
-terraform -chdir=infra destroy
-```
-
-El módulo de storage usa `terraform_data.empty_buckets` y `scripts/empty-bucket.sh` para vaciar
-objetos, versiones, delete markers y multipart uploads antes de borrar los buckets. Si el
-`destroy` falla porque un bucket no está vacío:
-
-```bash
-DOCS_BUCKET="$(terraform -chdir=infra output -raw docs_bucket_name)"
-FRONTEND_BUCKET="$(terraform -chdir=infra output -raw frontend_bucket_name)"
-ARTIFACTS_BUCKET="$(terraform -chdir=infra output -raw artifacts_bucket_name)"
-
-./scripts/empty-bucket.sh "$DOCS_BUCKET"
-./scripts/empty-bucket.sh "$FRONTEND_BUCKET"
-./scripts/empty-bucket.sh "$ARTIFACTS_BUCKET"
-terraform -chdir=infra destroy
-```
-
-Después de confirmar que no quedan recursos:
-
-```bash
-terraform -chdir=infra state list
-rm -f infra/terraform.tfstate infra/terraform.tfstate.backup infra/tfplan
-```
-
-> No borres el estado antes de que el `destroy` termine: Terraform lo necesita para saber qué
-> recursos eliminar. Si el laboratorio se apaga solo, el estado puede quedar apuntando a
-> recursos que ya no existen; en ese caso usa `terraform state rm` con cuidado o empieza con un
-> estado nuevo.
-
-### 6.6 Cambiar de sesión o de cuenta
-
-Si `terraform output -raw account_id` no coincide con `aws sts get-caller-identity`, **no
-apliques**. Mueve el estado a un lado y empieza de cero:
-
-```bash
-mv infra/terraform.tfstate infra/terraform.tfstate.old-account
-terraform -chdir=infra init -input=false
-terraform -chdir=infra plan
-```
-
-El estado viejo no se puede usar para destruir recursos de otra cuenta. Si necesitas limpiar la
-cuenta anterior, hazlo con credenciales de esa cuenta.
-
----
-
-## 7. Solución de problemas
-
-### 7.1 Árbol de decisión
+### 6.1 Árbol de decisión
 
 1. **¿Falla `terraform init`?** Credenciales, red o providers. Revisa §2.5 y `terraform version`.
 2. **¿Falla `plan`?** Variables inválidas, estado de otra cuenta o recursos huérfanos. Revisa
    §2.4 y §3.
 3. **¿Falla `apply`?** Lo más común es un recurso preexistente (`ParameterAlreadyExists`,
-   `OriginAccessControlAlreadyExists`) o una acción denegada por la SCP. Revisa §7.3 y §7.4.
+   `OriginAccessControlAlreadyExists`) o una acción denegada por la SCP. Revisa §6.3 y §6.4.
 4. **¿El `apply` termina pero la app no responde?** ALB/target group, userData, artefacto o SSM.
-   Revisa §7.5.
+   Revisa §6.5.
 5. **¿La app responde pero el upload falla?** CORS, URL prefirmada expirada o `Content-Type`.
-   Revisa §7.7.
+   Revisa §6.7.
 6. **¿El upload funciona pero el documento no termina?** Worker, logs, DynamoDB o S3. Revisa
-   §7.6.
+   §6.6.
 7. **¿Todo funciona pero no llegan correos?** SNS sigue en `PendingConfirmation` o la política
-   del topic no permite la acción. Revisa §7.8.
+   del topic no permite la acción. Revisa §6.8.
 
-### 7.2 Tabla de casos frecuentes
+### 6.2 Tabla de casos frecuentes
 
 | Síntoma | Causa probable | Qué hacer | Prevención |
 | --- | --- | --- | --- |
@@ -939,10 +824,10 @@ cuenta anterior, hazlo con credenciales de esa cuenta.
 | `OriginAccessControlAlreadyExists` | OAC de una sesión anterior | Importar `module.cdn...frontend` con su ID | Preflight de OAC |
 | `DBInstanceAlreadyExists` | RDS huérfano | Importar `module.rds.aws_db_instance.this` o eliminar el RDS | Preflight de RDS |
 | `dist/docuprocess-app.zip` no existe | No se ejecutó el empaquetado | `./scripts/package-app.sh` | Empaquetar antes de cada apply |
-| Instancias `unhealthy` o userData falla | Artefacto, Node, SSM o permisos | SSM + `/var/log/docuprocess-userdata.log`; §7.5 | Verificar 2/2 healthy antes de la demo |
+| Instancias `unhealthy` o userData falla | Artefacto, Node, SSM o permisos | SSM + `/var/log/docuprocess-userdata.log`; §6.5 | Verificar 2/2 healthy antes de la demo |
 | CloudFront 504 intermitente | ALB en draining durante reemplazo | Esperar 1–2 min y reintentar; revisar target group | No probar durante un reemplazo |
 | SNS en `PendingConfirmation` | Correo no confirmado | Confirmar el correo; revisar spam | Confirmar antes de la demo |
-| Documento atascado en `PROCESSING` | Worker caído o excepción | SSM + `journalctl`; reiniciar el worker; §7.6 | Verificar worker activo |
+| Documento atascado en `PROCESSING` | Worker caído o excepción | SSM + `journalctl`; reiniciar el worker; §6.6 | Verificar worker activo |
 | `503` al crear documento | Transacciones DynamoDB denegadas | `enable_dynamodb_transactions = false` y aplicar | Tener el flag listo |
 | PUT prefirmado `403` | URL expirada, header o CORS | Regenerar URL, usar `Content-Type` exacto, revisar CORS | Subir en menos de 15 min |
 | Pantalla en blanco | Frontend sin build o `config.js` viejo | `./scripts/deploy-frontend.sh`; revisar consola | Publicar frontend después del apply |
@@ -952,7 +837,7 @@ cuenta anterior, hazlo con credenciales de esa cuenta.
 | `cloudtrail:CreateTrail` denegado | SCP del Sandbox | Usar `cloudtrail_mode="event-history"` | No prometer trail persistente |
 | `StartInstanceRefresh` denegado | SCP del Sandbox | No usar `instance_refresh`; reemplazar por ASG/terminación | Diseño ya previsto |
 
-### 7.3 Recursos huérfanos e importación
+### 6.3 Recursos huérfanos e importación
 
 El error típico es:
 
@@ -989,7 +874,7 @@ Después de cada import, ejecuta `terraform -chdir=infra plan -refresh=true` y c
 plan solo crea lo que falta. Si el recurso no pertenece al proyecto, elimínalo con la consola o
 con AWS CLI y vuelve a aplicar.
 
-### 7.4 Acciones denegadas por la SCP
+### 6.4 Acciones denegadas por la SCP
 
 | Error | Fallback |
 | --- | --- |
@@ -1004,7 +889,7 @@ con AWS CLI y vuelve a aplicar.
 > acciones de escritura de ítems que usa la transacción. El fallback correcto es desactivar la
 > transacción en la aplicación, no añadir esa cadena a una política.
 
-### 7.5 Aplicación no responde o instancias unhealthy
+### 6.5 Aplicación no responde o instancias unhealthy
 
 Diagnóstico en orden:
 
@@ -1034,7 +919,7 @@ Causas típicas:
 - El servicio arrancó antes de que RDS estuviera disponible: el userData tiene un readiness
   temporal; si falló, reinicia `docuprocess-api` y revisa `journalctl`.
 
-### 7.6 Documento atascado en `PROCESSING`
+### 6.6 Documento atascado en `PROCESSING`
 
 1. Verifica que el worker esté activo en **todas** las instancias (§5.6).
 2. Revisa los logs:
@@ -1070,7 +955,7 @@ aws dynamodb update-item \
 > El worker sondea cada 5 segundos y procesa lotes de 10. Un documento puede tardar unos
 > segundos; si pasan más de 5 minutos, algo está mal.
 
-### 7.7 Upload prefirmado con 403 o error de CORS
+### 6.7 Upload prefirmado con 403 o error de CORS
 
 - La URL prefirmada expira a los **15 minutos**. Genera una nueva con `POST /api/documents`.
 - El `Content-Type` del `PUT` debe ser exactamente el mismo que enviaste al crear el documento.
@@ -1086,7 +971,7 @@ aws s3api get-bucket-cors \
 - Un `403` con `SignatureDoesNotMatch` suele indicar que se modificó la URL o el header después
   de firmarla.
 
-### 7.8 SNS no envía correos
+### 6.8 SNS no envía correos
 
 1. Confirma que la suscripción no esté en `PendingConfirmation` (§4.7).
 2. Revisa la política del topic: debe permitir `sns:Publish` al rol de la aplicación y a
@@ -1108,7 +993,7 @@ aws cloudwatch describe-alarms \
 
 5. Si el correo llegó a spam, marca “No es spam” antes de la demo.
 
-### 7.9 Destrucción incompleta
+### 6.9 Destrucción incompleta
 
 Si `terraform destroy` deja recursos:
 
@@ -1128,9 +1013,9 @@ decidiste conservar.
 
 ---
 
-## 8. Contraste con el enunciado y la rúbrica
+## 7. Contraste con el enunciado y la rúbrica
 
-### 8.1 Entregables del enunciado (§5)
+### 7.1 Entregables del enunciado (§5)
 
 | Entregable | Dónde está | Estado |
 | --- | --- | --- |
@@ -1140,7 +1025,7 @@ decidiste conservar.
 | Guía paso a paso de despliegue automatizado y solución de problemas en el Sandbox | Este documento (`.md` y `.pdf`) y la guía rápida `docs/guias/despliegue.md` | Cumple |
 | Sustentación/demo: despliegue desde cero, flujo S3→worker→DynamoDB→SNS y carga del ASG | `docs/sustentacion.md`, `docs/informe-c4.md`, `docs/informe-a8.md`, `docs/informe-b10.md` | Cumple |
 
-### 8.2 Matriz requisito → implementación → evidencia
+### 7.2 Matriz requisito → implementación → evidencia
 
 | # | Requisito del enunciado | Implementación / evidencia | Estado |
 | --- | --- | --- | --- |
@@ -1168,7 +1053,7 @@ decidiste conservar.
 > la integración anterior. El plan actual, con el módulo `monitoring`, es del orden de 73
 > recursos; la diferencia no es un fallo, es la evolución del proyecto.
 
-### 8.3 Mapeo a la rúbrica
+### 7.3 Mapeo a la rúbrica
 
 | Criterio | Peso | Cómo se cubre | Evidencia |
 | --- | --- | --- | --- |
@@ -1178,7 +1063,7 @@ decidiste conservar.
 | Monitoreo, alertas y resiliencia | 15 % | 4 alarmas, SNS, CloudTrail, health/ready, ASG, reemplazo controlado | `docs/informe-b10.md`, §5.7, §5.8 |
 | Documentación y sustentación | 10 % | README, arquitectura, trazabilidad, esta guía y guion de demo | `docs/sustentacion.md`, este documento |
 
-### 8.4 Restricciones: cumplimiento y salvedades
+### 7.4 Restricciones: cumplimiento y salvedades
 
 | Restricción | Cumplimiento | Salvedad honesta |
 | --- | --- | --- |
@@ -1193,7 +1078,7 @@ decidiste conservar.
 | CloudTrail | Cumple con salvedad | `event-history`; el Sandbox deniega `CreateTrail` |
 | SNS por correo | Cumple con salvedad | La confirmación del buzón es manual y no la puede hacer Terraform |
 
-### 8.5 Brechas y riesgos aceptados
+### 7.5 Brechas y riesgos aceptados
 
 | Brecha / riesgo | Impacto | Mitigación | Estado |
 | --- | --- | --- | --- |
@@ -1208,7 +1093,7 @@ decidiste conservar.
 | 504 transitorio en CloudFront | Falla durante reemplazo/draining | Reintentar; no probar durante reemplazos | Documentado |
 | 4 respuestas no-2xx en A8 | Ruido durante el escalado | Se reporta en la evidencia; no se oculta | Documentado |
 
-### 8.6 Checklist de aceptación
+### 7.6 Checklist de aceptación
 
 - [ ] El repositorio clona y `terraform validate` pasa.
 - [ ] `terraform apply` termina desde un estado vacío (o desde huérfanos importados).
@@ -1227,7 +1112,7 @@ decidiste conservar.
 
 ---
 
-## 9. Anexos
+## 8. Anexos
 
 ### A. Outputs de Terraform
 

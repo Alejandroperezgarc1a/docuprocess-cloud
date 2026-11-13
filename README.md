@@ -114,7 +114,7 @@ La semana del 2 al 6 de noviembre quedó limitada a las fundaciones. B2, B3, B6,
 
 ## Cómo desplegar
 
-La guía operativa completa (preflight del Sandbox, despliegue automatizado, verificación E2E, importación de recursos huérfanos, operación y solución de problemas) está en [`docs/guias/despliegue-automatizado-sandbox.md`](docs/guias/despliegue-automatizado-sandbox.md) y en su versión PDF [`despliegue-automatizado-sandbox.pdf`](docs/guias/despliegue-automatizado-sandbox.pdf). La guía rápida de referencia sigue disponible en [`docs/guias/despliegue.md`](docs/guias/despliegue.md). El orden resumido es:
+La guía operativa completa (preflight del Sandbox, despliegue automatizado, verificación E2E, importación de recursos huérfanos y solución de problemas) está en [`docs/guias/despliegue-automatizado-sandbox.md`](docs/guias/despliegue-automatizado-sandbox.md) y en su versión PDF [`despliegue-automatizado-sandbox.pdf`](docs/guias/despliegue-automatizado-sandbox.pdf). La guía rápida de referencia sigue disponible en [`docs/guias/despliegue.md`](docs/guias/despliegue.md). El orden resumido es:
 
 ```bash
 aws sts get-caller-identity                                 # confirmar la cuenta del Sandbox antes de aplicar
