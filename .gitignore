@@ -11,6 +11,7 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 *.tfplan
+tfplan*.bin
 # .terraform.lock.hcl SÍ se versiona
 
 # Node
