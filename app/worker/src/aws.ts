@@ -50,6 +50,8 @@ export interface AwsService {
   complete(item: DocumentItem, result: DocumentResult, now: string): Promise<boolean>;
   fail(item: DocumentItem, error: string, now: string): Promise<boolean>;
   failPending(item: DocumentItem, error: string, now: string): Promise<boolean>;
+  /** Marca FAILED los PROCESSING cuya ultima actualizacion es anterior a staleBefore. Devuelve cuantos. */
+  reapStaleProcessing(now: string, staleBefore: string): Promise<number>;
   publish(payload: NotificationPayload): Promise<void>;
 }
 
@@ -126,6 +128,21 @@ export function buildTerminalUpdate(status: 'DONE' | 'FAILED'): string {
   return status === DONE
     ? 'SET #s = :done, #r = :result, updatedAt = :now REMOVE #e'
     : 'SET #s = :failed, #e = :error, updatedAt = :now REMOVE #r';
+}
+
+/**
+ * Filtra, de una lista de documentos en PROCESSING, los que quedaron
+ * huerfanos: su `updatedAt` (o `createdAt`, si falta) es anterior a
+ * `staleBefore` (ISO-8601). Puro y exportado para pruebas.
+ */
+export function findStaleProcessing(
+  items: DocumentItem[],
+  staleBefore: string,
+): DocumentItem[] {
+  return items.filter((item) => {
+    const updatedAt = item.updatedAt ?? item.createdAt;
+    return typeof updatedAt === 'string' && updatedAt < staleBefore;
+  });
 }
 
 function delay(ms: number): Promise<void> {
@@ -352,6 +369,54 @@ export function createAwsService(
           error,
         }),
       );
+    },
+
+    async reapStaleProcessing(now: string, staleBefore: string): Promise<number> {
+      const result = await ddb.send(
+        new QueryCommand({
+          TableName: config.ddbTable,
+          IndexName: 'status-createdAt',
+          KeyConditionExpression: '#s = :processing',
+          ExpressionAttributeNames: { '#s': 'status' },
+          ExpressionAttributeValues: { ':processing': PROCESSING },
+          Limit: 100,
+        }),
+      );
+      const stale = findStaleProcessing(
+        (result.Items ?? []) as DocumentItem[],
+        staleBefore,
+      );
+      let reaped = 0;
+      for (const item of stale) {
+        const closed = await sendTransition(
+          {
+            TableName: config.ddbTable,
+            Key: { documentId: item.documentId },
+            UpdateExpression: buildTerminalUpdate(FAILED),
+            ConditionExpression: '#s = :processing',
+            ExpressionAttributeNames: {
+              '#s': 'status',
+              '#r': 'result',
+              '#e': 'error',
+            },
+            ExpressionAttributeValues: {
+              ':processing': PROCESSING,
+              ':failed': FAILED,
+              ':error': 'processing timeout',
+              ':now': now,
+            },
+          },
+          makeEvent(item, PROCESSING, FAILED, now, {
+            reason: 'processing timeout',
+            error: 'processing timeout',
+          }),
+        );
+        if (closed) {
+          reaped += 1;
+          logger.warn('processing_reaper_closed', { documentId: item.documentId });
+        }
+      }
+      return reaped;
     },
 
     async publish(payload: NotificationPayload): Promise<void> {

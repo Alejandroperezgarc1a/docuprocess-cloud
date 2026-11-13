@@ -21,6 +21,7 @@ export function makeConfig(
     pollSeconds: 5,
     batchSize: 10,
     uploadTimeoutMinutes: 15,
+    processingTimeoutMinutes: 30,
     maxFileBytes: 10 * 1024 * 1024,
     logLevel: 'error',
     workerId: 'test-worker',
@@ -88,6 +89,9 @@ export class FakeAwsService implements AwsService {
   published: NotificationPayload[] = [];
   publishError?: Error;
 
+  reapResult = 0;
+  reapCalls: Array<{ now: string; staleBefore: string }> = [];
+
   async queryPending(limit: number): Promise<DocumentItem[]> {
     this.queryLimit = limit;
     return this.pending;
@@ -145,6 +149,11 @@ export class FakeAwsService implements AwsService {
   ): Promise<boolean> {
     this.failPendingCalls.push({ item, error, now });
     return this.failPendingResult;
+  }
+
+  async reapStaleProcessing(now: string, staleBefore: string): Promise<number> {
+    this.reapCalls.push({ now, staleBefore });
+    return this.reapResult;
   }
 
   async publish(payload: NotificationPayload): Promise<void> {

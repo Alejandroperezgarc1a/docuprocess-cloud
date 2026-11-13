@@ -12,6 +12,8 @@ export interface WorkerConfig {
   pollSeconds: number;
   batchSize: number;
   uploadTimeoutMinutes: number;
+  /** Minutos que un documento puede quedar en PROCESSING antes de marcarlo FAILED. */
+  processingTimeoutMinutes: number;
   maxFileBytes: number;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   workerId: string;
@@ -72,6 +74,13 @@ export function loadConfig(
   const pollSeconds = readInt(env, 'WORKER_POLL_SECONDS', 5, 1, 3600);
   const batchSize = readInt(env, 'WORKER_BATCH_SIZE', 10, 1, 100);
   const uploadTimeoutMinutes = readInt(env, 'UPLOAD_TIMEOUT_MINUTES', 15, 1, 1440);
+  const processingTimeoutMinutes = readInt(
+    env,
+    'PROCESSING_TIMEOUT_MINUTES',
+    30,
+    1,
+    10080,
+  );
 
   const workerId =
     (env.WORKER_ID ?? '').trim() || `${hostname()}:${process.pid}`;
@@ -89,6 +98,7 @@ export function loadConfig(
     pollSeconds,
     batchSize,
     uploadTimeoutMinutes,
+    processingTimeoutMinutes,
     maxFileBytes: maxFileMb * 1024 * 1024,
     logLevel: readLogLevel(env),
     workerId,

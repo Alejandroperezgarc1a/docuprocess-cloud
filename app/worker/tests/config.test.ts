@@ -16,6 +16,7 @@ describe('config', () => {
     assert.equal(config.pollSeconds, 5);
     assert.equal(config.batchSize, 10);
     assert.equal(config.uploadTimeoutMinutes, 15);
+    assert.equal(config.processingTimeoutMinutes, 30);
     assert.equal(config.maxFileBytes, 2 * 1024 * 1024);
     assert.equal(config.snsTopicArn, '');
     assert.equal(config.ddbTransactions, true);
@@ -41,6 +42,16 @@ describe('config', () => {
     );
     assert.throws(
       () => loadConfig({ ...BASE, WORKER_BATCH_SIZE: '1.5' }),
+      ConfigError,
+    );
+  });
+
+  it('lee PROCESSING_TIMEOUT_MINUTES y lo valida', () => {
+    const config = loadConfig({ ...BASE, PROCESSING_TIMEOUT_MINUTES: '45' });
+    assert.equal(config.processingTimeoutMinutes, 45);
+
+    assert.throws(
+      () => loadConfig({ ...BASE, PROCESSING_TIMEOUT_MINUTES: '0' }),
       ConfigError,
     );
   });

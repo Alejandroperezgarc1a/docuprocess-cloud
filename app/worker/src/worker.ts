@@ -42,6 +42,7 @@ export async function runWorker(
 ): Promise<void> {
   const isStopping = options.isStopping ?? (() => false);
   const queryLimit = Math.min(config.batchSize * 3, 300);
+  let lastReap = 0;
 
   while (!isStopping()) {
     let items: Awaited<ReturnType<AwsService['queryPending']>>;
@@ -68,6 +69,25 @@ export async function runWorker(
           documentId: item.documentId,
           ...errorFields(error),
         });
+      }
+    }
+
+    // Reaper de PROCESSING huerfanos: a lo sumo una vez por minuto, nunca bloqueante.
+    if (Date.now() - lastReap >= 60_000) {
+      lastReap = Date.now();
+      try {
+        const staleBefore = new Date(
+          Date.now() - config.processingTimeoutMinutes * 60_000,
+        ).toISOString();
+        const reaped = await aws.reapStaleProcessing(
+          new Date().toISOString(),
+          staleBefore,
+        );
+        if (reaped > 0) {
+          logger.warn('processing_reaper', { reaped });
+        }
+      } catch (error) {
+        logger.error('processing_reaper_failed', errorFields(error));
       }
     }
 
@@ -122,6 +142,7 @@ async function main(): Promise<void> {
     pollSeconds: config.pollSeconds,
     batchSize: config.batchSize,
     uploadTimeoutMinutes: config.uploadTimeoutMinutes,
+    processingTimeoutMinutes: config.processingTimeoutMinutes,
     maxFileBytes: config.maxFileBytes,
     snsEnabled: config.snsTopicArn !== '',
     ddbTransactions: config.ddbTransactions,
