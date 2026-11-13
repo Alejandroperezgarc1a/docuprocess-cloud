@@ -65,6 +65,21 @@ output "alb_dns_name" {
   value       = module.compute.alb_dns_name
 }
 
+output "alarm_names" {
+  description = "Nombres de las alarmas de CloudWatch (B10)."
+  value       = module.monitoring.alarm_names
+}
+
+output "cloudtrail_bucket_name" {
+  description = "Bucket S3 de los logs de CloudTrail (B10)."
+  value       = module.monitoring.cloudtrail_bucket_name
+}
+
+output "cloudtrail_arn" {
+  description = "ARN del trail de CloudTrail (B10)."
+  value       = module.monitoring.cloudtrail_arn
+}
+
 output "asg_name" {
   description = "Auto Scaling Group de la app (A3)."
   value       = module.compute.asg_name
