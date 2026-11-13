@@ -78,7 +78,7 @@ Comprueba credenciales y cuenta contra el tfstate (falla antes de escribir si la
 3. API directa (sin caché):
 
    ```bash
-   DOMAIN="$(terraform -chdir=infra output -raw cloudfront_domain)"
+   DOMAIN="$(terraform -chdir=infra output -raw cloudfront_domain_name)"
    curl -sS "https://$DOMAIN/api/health"     # {"status":"ok"}
    curl -sS "https://$DOMAIN/api/ready"      # MySQL check
    ```
