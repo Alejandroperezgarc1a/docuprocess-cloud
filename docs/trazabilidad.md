@@ -25,9 +25,9 @@
 | 6 | S3 para archivos | apply OK: buckets docuprocess-dev-{docs,frontend,artifacts}-47cb5959 con PAB/SSE/versioning/CORS/OAC; subida PUT prefirmada OK (3/3) | Verificado | 2026-11-13 | — |
 | 7 | DynamoDB para metadatos, historial y resultados | apply OK: tablas ACTIVE; document_events: PENDING→PROCESSING→DONE sin duplicados (3/3 docs) | Verificado | 2026-11-13 | — |
 | 8 | SNS para notificaciones | apply OK: topic docuprocess-dev-alerts + suscripción email ingesoftv@gmail.com confirmada; worker `sns_published` (DONE) y CloudWatch `Delivered=3`, `Failed=0` | Verificado | 2026-11-13 | Terraform no puede confirmar la suscripción: la confirmación del buzón es manual (una vez) |
-| 9 | CloudWatch: alarmas de CPU de EC2 y métricas de RDS | Módulo `monitoring` previsto (B9) | Pendiente B9 | 2026-11-11 | — |
-| 10 | CloudTrail para auditoría | Módulo `monitoring` previsto (B9) | Pendiente B9 | 2026-11-11 | — |
-| 11 | IaC modular (Terraform) | apply desde estado vacío OK: Plan 68 to add, 68/68, APPLY3_EXIT=0; módulos network/storage/dynamodb/rds/compute/sns/cdn | Verificado | 2026-11-13 | monitoring pendiente de B9/B10 |
+| 9 | CloudWatch: alarmas de CPU de EC2 y métricas de RDS | Módulo `monitoring` previsto (B10) | Pendiente B10 | 2026-11-11 | — |
+| 10 | CloudTrail para auditoría | Módulo `monitoring` previsto (B10) | Pendiente B10 | 2026-11-11 | — |
+| 11 | IaC modular (Terraform) | apply desde estado vacío OK: Plan 68 to add, 68/68, APPLY3_EXIT=0; módulos network/storage/dynamodb/rds/compute/sns/cdn | Verificado | 2026-11-13 | monitoring pendiente de B10 |
 | 12 | Sin `CreateRole`/`GetRole`; solo roles preexistentes | `data.aws_iam_instance_profiles` + políticas basadas en recursos | Verificado | 2026-11-11 | — |
 | 13 | EC2 `t2/t3`, máximo 9 concurrentes, EBS `gp2` ≤ 35 GB | `var.instance_type` y `var.root_volume_size` con validaciones | Verificado | 2026-11-11 | — |
 | 14 | RDS `gp2` ≤ 100 GB, Single-AZ | `infra/modules/rds/main.tf` | Verificado | 2026-11-11 | — |
@@ -66,7 +66,19 @@ Rama `feat/C3-integracion-e2e-una-sola-cuenta`; PR #50 (Closes #16). Aplicado, p
 - ENTREGA: **viernes 13 de noviembre de 2026** (milestone "Entrega 13 nov"). C4 (#23) queda para el 17 nov en cuenta limpia.
 - Pendiente/observaciones para A9: huérfanos sin tag que hicieron fallar la primera verificación de cuenta vacía (apply3 pasó solo tras borrarlos manualmente); tfstate de otra cuenta inconsistente → reset documentado (tfstate `.obsoleto-20261113`, previo `previa-20261112`); SNS exige confirmación manual del buzón (Terraform no puede confirmarla; verificado tras confirmar el correo); CloudFront 504 transitorio con draining; `voc-cancel-cred` a mitad de apply (credenciales voclabs revocadas, relanzar lab + re-plan/apply idempotente); `tfplan*.bin` nunca se commitean.
 
-## 5. Riesgos abiertos
+## 5. Criterios de terminado de B9
+
+| Criterio de la HU | Evidencia | Estado | Última verificación |
+| --- | --- | --- | --- |
+| `./scripts/deploy-frontend.sh` termina sin errores e imprime la URL | Script implementado; la ejecución completa requiere credenciales de la cuenta del estado y una distribución de CloudFront aplicada (B7) | Pendiente (bloqueo C3/B7) | 2026-11-13 |
+| Un cambio visible en `index.html` aparece en CloudFront tras la invalidación | Incluye espera de `invalidation-completed`; prueba E2E pendiente del mismo bloqueo | Pendiente (bloqueo C3/B7) | 2026-11-13 |
+| El bucket no contiene `config.example.js` y sí `config.js` | El script borra el objeto obsoleto y verifica ambos con `head-object` | Implementado (código) | 2026-11-13 |
+| Con credenciales vencidas, el script falla al inicio con un mensaje claro | `aws sts get-caller-identity` se ejecuta antes de Terraform, npm o S3 | Verificado (local) | 2026-11-13 |
+| `bash -n`, ShellCheck y build de Vite | `scripts/deploy-frontend.sh`, `frontend/`; CI ejecuta ShellCheck y `npm run build` | Verificado (local) | 2026-11-13 |
+
+**Bloqueo actual:** el estado local de Terraform es de la cuenta `491699813584`, pero las credenciales disponibles son de `556880009270`; además, el estado no contiene la distribución de CloudFront y `cloudfront_distribution_id`/`cloudfront_domain_name` son `null`. El script falla antes de escribir, como se espera. Para cerrar los criterios pendientes hay que alinear cuenta/estado y aplicar B7.
+
+## 6. Riesgos abiertos
 
 | Riesgo | Impacto | Mitigación |
 | --- | --- | --- |
@@ -76,9 +88,9 @@ Rama `feat/C3-integracion-e2e-una-sola-cuenta`; PR #50 (Closes #16). Aplicado, p
 | El worker aún no está fusionado en `main` | No hay transiciones `PROCESSING/DONE/FAILED` en la rama base | B5/B6 integran el worker; la bitácora ya tiene el contrato y el endpoint |
 | Fechas y horas reales de la tarea | El tablero puede quedar desactualizado | Issue #7 actualizada al cerrar (formato `YYYY-MM-DD`); el Project no es visible con el token actual |
 | Estado local de Terraform de otra cuenta (`491699813584`) | `plan/apply` falla con las credenciales actuales (`556880009270`) | Usar el estado de la cuenta correcta o `terraform state rm`/importar; nunca aplicar sobre un estado ajeno |
-| No existe `infra/terraform.tfvars` | El despliegue no es reproducible solo con el repo | Copiar `terraform.tfvars.example`, completar secretos y correo, y mantenerlo fuera de Git |
+| `infra/terraform.tfvars` no se versiona (existe localmente) | El despliegue no es reproducible solo con el repo | Copiar `terraform.tfvars.example`, completar secretos y correo, y mantenerlo fuera de Git |
 
-## 5. Cómo reproducir la verificación
+## 7. Cómo reproducir la verificación
 
 ```bash
 # Infraestructura
