@@ -5,6 +5,10 @@
 # Uso (desde cualquier carpeta del repositorio):
 #   ./scripts/verify-deployment.sh            # tras terraform apply + deploy-frontend.sh
 #   ./scripts/verify-deployment.sh limpieza   # tras terraform destroy: no deben quedar recursos
+#
+# Los acentos graves dentro de --query son literales de JMESPath (p. ej. `InService`), no
+# sustituciones de comandos: van entre comillas simples a propósito.
+# shellcheck disable=SC2016
 set -uo pipefail
 
 for cmd in aws terraform curl; do
