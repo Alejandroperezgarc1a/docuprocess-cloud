@@ -25,14 +25,14 @@
 | 6 | S3 para archivos | apply OK: buckets docuprocess-dev-{docs,frontend,artifacts}-47cb5959 con PAB/SSE/versioning/CORS/OAC; subida PUT prefirmada OK (3/3) | Verificado | 2026-11-13 | — |
 | 7 | DynamoDB para metadatos, historial y resultados | apply OK: tablas ACTIVE; document_events: PENDING→PROCESSING→DONE sin duplicados (3/3 docs) | Verificado | 2026-11-13 | — |
 | 8 | SNS para notificaciones | apply OK: topic docuprocess-dev-alerts + suscripción email ingesoftv@gmail.com confirmada; worker `sns_published` (DONE) y CloudWatch `Delivered=3`, `Failed=0` | Verificado | 2026-11-13 | Terraform no puede confirmar la suscripción: la confirmación del buzón es manual (una vez) |
-| 9 | CloudWatch: alarmas de CPU de EC2 y métricas de RDS | Módulo `monitoring` previsto (B10) | Pendiente B10 | 2026-11-11 | — |
-| 10 | CloudTrail para auditoría | Módulo `monitoring` previsto (B10) | Pendiente B10 | 2026-11-11 | — |
-| 11 | IaC modular (Terraform) | apply desde estado vacío OK: Plan 68 to add, 68/68, APPLY3_EXIT=0; módulos network/storage/dynamodb/rds/compute/sns/cdn | Verificado | 2026-11-13 | monitoring pendiente de B10 |
+| 9 | CloudWatch: alarmas de CPU de EC2 y métricas de RDS | `infra/modules/monitoring/main.tf`; alarmas `docuprocess-dev-ec2-cpu-high`, `rds-cpu-high`, `rds-connections-high`, `rds-free-storage-low` → SNS `docuprocess-dev-alerts`; ver `docs/informe-b10.md` | Implementado (código); verificación viva bloqueada por SCP | 2026-11-13 | La sesión voclabs deniega todas las APIs de lectura (`describe-alarms`, `get-metric-statistics`, `describe-instances`…): evidencia viva pendiente hasta sesión con permisos o consola |
+| 10 | CloudTrail para auditoría | `cloudtrail_mode="event-history"` (default) + `scripts/verify-cloudtrail.sh`; ver `docs/informe-b10.md` | Implementado (con limitación documentada) | 2026-11-13 | `lookup-events` denegado por SCP en esta sesión; con permiso, `-var cloudtrail_mode=trail` crea trail + bucket |
+| 11 | IaC modular (Terraform) | apply desde estado vacío OK: Plan 68 to add, 68/68, APPLY3_EXIT=0; módulos network/storage/dynamodb/rds/compute/sns/cdn + monitoring (PR #51) | Verificado | 2026-11-13 | — |
 | 12 | Sin `CreateRole`/`GetRole`; solo roles preexistentes | `data.aws_iam_instance_profiles` + políticas basadas en recursos | Verificado | 2026-11-11 | — |
 | 13 | EC2 `t2/t3`, máximo 9 concurrentes, EBS `gp2` ≤ 35 GB | `var.instance_type` y `var.root_volume_size` con validaciones | Verificado | 2026-11-11 | — |
 | 14 | RDS `gp2` ≤ 100 GB, Single-AZ | `infra/modules/rds/main.tf` | Verificado | 2026-11-11 | — |
 | 15 | Comparativa RDS vs. DynamoDB | `docs/rds-vs-dynamodb.md` | Verificado | 2026-11-11 | — |
-| 16 | Diagrama detallado y flujo | `README.md` (componentes) y `docs/architecture.md` §4.1 (datos) | Implementado | 2026-11-11 | El diagrama completo con la tabla de eventos es B10 |
+| 16 | Diagrama detallado y flujo | `README.md` (diagrama de componentes) y `docs/architecture.md` §1 (diagrama detallado, flujo del documento y tabla de componentes/eventos) | Verificado | 2026-11-13 | — |
 | 17 | Guía de despliegue y troubleshooting | `docs/guias/despliegue.md` (credenciales, despliegue, verificación, destroy y 12 casos de troubleshooting) | Verificado | 2026-11-13 | — |
 | 18 | Demo: subida S3 → worker → DynamoDB → SNS | Flujo E2E 2026-11-13 (vía CloudFront): registro/login; PDF→DONE pages=1; PNG→DONE width/height=1; corrupt.pdf→FAILED unsupported file type; doc ajeno 404; correo SNS por documento | Verificado | 2026-11-13 | — |
 | 19 | Prueba de carga para el ASG | Scripts previstos (A8) | Pendiente A8 | 2026-11-11 | — |

@@ -1,6 +1,88 @@
 # Arquitectura de DocuProcess Cloud
 
-> Las secciones de diagrama detallado, flujo de un documento y tabla de componentes se completan en la tarea B10. Este documento empieza con los **contratos de integración** (C1): la fuente de verdad que comparten la API, el worker, el frontend y Terraform. Todo cambio a un contrato se hace con un PR que actualice esta sección.
+> Estado final del proyecto (cierre B10, 2026-11-13). Complementa el diagrama de componentes del README (enunciado, figura de referencia) con el **flujo de un documento**, la **tabla de eventos** de la bitácora y la **tabla de componentes**. Este documento empieza con los **contratos de integración** (C1): la fuente de verdad que comparten la API, el worker, el frontend y Terraform. Todo cambio a un contrato se hace con un PR que actualice esta sección.
+
+## 1. Diagrama detallado
+
+### 1.1 Componentes y flujo de un documento
+
+```mermaid
+flowchart TB
+    subgraph client["Cliente (navegador)"]
+        fe["Frontend estático (Vite)<br/>registro/login/subida/historial/detalle"]
+    end
+
+    cf["CloudFront (default cert, HTTPS)<br/>default root index.html · /api/* → ALB (TTL 0)"]
+
+    subgraph aws["AWS us-east-1 · Sandbox"]
+        subgraph vpc["VPC 10.0.0.0/16"]
+            alb["ALB (HTTP:80)<br/>tg:8000 /api/health"]
+            subgraph priv["Subredes privadas"]
+                ec2a["EC2 AZ-a<br/>API (Express) :8000<br/>worker (poll GSI)"]
+                ec2b["EC2 AZ-b<br/>API (Express) :8000<br/>worker (poll GSI)"]
+                rds[("RDS MySQL<br/>db.t3.micro Single-AZ")]
+            end
+            ep["VPC endpoints<br/>(S3, DynamoDB, SSM, SNS)"]
+        end
+
+        s3f[("S3 frontend (privado)<br/>OAC + CloudFront")]
+        s3d[("S3 documentos<br/>CORS PUT prefirmado")]
+        s3a[("S3 artefactos<br/>(releases/app-<md5>.zip)")]
+        ddb[("DynamoDB<br/>documents + document_events<br/>(PAY_PER_REQUEST, PITR)")]
+        sns["SNS topic docuprocess-dev-alerts<br/>(suscripción email)"]
+        cw["CloudWatch<br/>alarms: EC2 CPU · RDS CPU/Conn/Storage"]
+        trail["CloudTrail<br/>event-history (o trail S3)"]
+    end
+
+    fe -->|HTTPS GET/HEAD| cf
+    cf -->|"default (OAC)"| s3f
+    cf -->|"/api/* (sin caché, Authorization)"| alb
+    alb --> ec2a & ec2b
+    ec2a & ec2b --> rds
+    ec2a & ec2b --> ep
+    ep --> ddb & s3d & s3a
+    fe -.->|"PUT prefirmado (Content-Type exacto)"| s3d
+    ec2a & ec2b -->|publish| sns
+    cw -->|alarm + ok| sns
+    sns -->|correo| user["Correo del equipo"]
+    trail -->|lookup-events| admin["Auditoría"]
+```
+
+Flujo de un documento (numerado):
+
+1. `POST /api/documents` → la API valida (MIME, tamaño, extensión) y escribe `PENDING` en `documents` + evento `PENDING` en `document_events` (transacción, `DDB_TRANSACTIONS=true`; fallback secuencial).
+2. La API devuelve `{ documentId, uploadUrl, ... }` al frontend.
+3. El navegador hace `PUT` directo a S3 documentos (Content-Type firmado, CORS del bucket con el origen CloudFront).
+4. El worker consulta el GSI `status-createdAt` (PENDING, los más antiguos primero), reclama con escritura condicional `PENDING → PROCESSING` + evento `PROCESSING` (transacción; un segundo worker recibe `ConditionalCheckFailed` y continúa).
+5. El worker hace HEAD + GET streaming desde S3; calcula SHA-256; extrae MIME por contenido (file-type), páginas PDF (pdf-lib) o dimensiones de imagen (image-size, ≤ 50 MP); tamaño en bytes.
+6. Transición terminal condicionada: `DONE` (con resultado) o `FAILED` (motivo: `unsupported file type`, `upload timeout` tras `UPLOAD_TIMEOUT_MINUTES` (15), > 10 MB).
+7. El mismo paso publica en `document_events` (append-only) y en SNS (`DONE`/`FAILED`) → correo de avisos.
+
+### 1.2 Tabla de eventos (bitácora auditable)
+
+| Campo | Descripción |
+| --- | --- |
+| `documentId` (PK) | Documento al que pertenece el evento |
+| `eventAt` (SK) | Timestamp ISO de la transición (orden de la bitácora) |
+| `eventType` / `status` | `PENDING` → `PROCESSING` → `DONE`/`FAILED` (append-only) |
+| `userId` | Propietario (permite `Query` por usuario sobre GSI `userId-eventAt`) |
+| `eventDay` | Día materializado `YYYY-MM-DD` (permite auditoría diaria vía GSI `day-eventAt`) |
+| `actor` | `api` o `worker` |
+| `details` | Motivo de fallo / metadatos de la transición |
+
+### 1.3 Tabla de componentes
+
+| Componente | Rol | Dónde |
+| --- | --- | --- |
+| CloudFront | Frontend estático + `/api/*` mismo origen (default cert, sin ACM/Route53) | `infra/modules/cdn` |
+| ALB | HTTP:80 → TG :8000 (health `/api/health`, `drop_invalid_header_fields`) | `infra/modules/compute` |
+| ASG (2–4, CPU 60 %) | EC2 t3.micro con API + worker (systemd; `user-data` con readiness gate) | `infra/modules/compute` |
+| RDS MySQL 8.0 | Usuarios y autenticación (bcrypt + JWT HS256) | `infra/modules/rds` |
+| DynamoDB | Metadatos e historial de documentos (`documents`, `document_events`) | `infra/modules/dynamodb` |
+| S3 | Frontend (privado, OAC) · Docs (CORS PUT) · Artefactos (versionado) | `infra/modules/storage` |
+| SNS | Notificación por correo (DONE/FAILED/alarmas) | `infra/modules/sns` |
+| CloudWatch + CloudTrail | Alarmas (EC2/RDS) → SNS; auditoría (event-history / trail) | `infra/modules/monitoring` |
+
 
 ## Contratos de integración
 

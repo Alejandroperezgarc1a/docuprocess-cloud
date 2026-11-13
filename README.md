@@ -100,7 +100,7 @@ El tablero de [GitHub Projects](https://github.com/users/Alejandroperezgarc1a/pr
 | 3 | Jue 12 – Vie 13 | Notificaciones, CDN y monitoreo | B5 (cierre), A4, B7, B10 |
 | 4 | Jue 12 – Vie 13 | Integración y cierre | B9, C3, A8, A9, B1 (documentación), C4 |
 
-La semana del 2 al 6 de noviembre queda limitada a las fundaciones. B2, B3, B6, B5, B7, B8, A3, A4 y A5 se movieron a la semana del 9 para no concentrar tareas. El cierre técnico estimado es el **viernes 13 de noviembre**.
+La semana del 2 al 6 de noviembre queda limitada a las fundaciones. B2, B3, B6, B5, B7, B8, A3, A4 y A5 se movieron a la semana del 9 para no concentrar tareas. El cierre técnico estimado es el **viernes 13 de noviembre**; la evidencia de la prueba de carga (A8) y la pasada desde cuenta limpia (C4) se cierran en la semana del 16–17 de noviembre.
 
 ## Cómo desplegar
 
@@ -121,6 +121,10 @@ terraform -chdir=infra init && terraform -chdir=infra apply
 La prueba de carga del ASG está en `scripts/load-test.sh` (sección 5 de la guía).
 
 `package-app.sh` va **antes** de cada `apply` que deba llevar código nuevo: Terraform sube el zip con su hash en el nombre y, si cambió, reemplaza las instancias sin caída del servicio.
+
+## Cierre y presentación
+
+La guía de presentación con el mapeo rúbrica → evidencia está en [`docs/sustentacion.md`](docs/sustentacion.md). El cierre del monitoreo está en [`docs/informe-b10.md`](docs/informe-b10.md) y el historial requisito → evidencia del proyecto en [`docs/trazabilidad.md`](docs/trazabilidad.md).
 
 ## Desarrollo local
 
