@@ -50,7 +50,9 @@
     listLoading: false,
     uploading: false,
     authBusy: false,
-    selectedFile: null
+    selectedFile: null,
+    adminDocuments: [],
+    adminLoading: false
   };
 
   const el = {
@@ -75,6 +77,10 @@
     registerMessage: document.getElementById("register-message"),
     appTitle: document.getElementById("app-title"),
     refreshButton: document.getElementById("refresh-button"),
+    adminCard: document.getElementById("admin-card"),
+    adminList: document.getElementById("admin-list"),
+    adminMessage: document.getElementById("admin-message"),
+    adminRefresh: document.getElementById("admin-refresh"),
     uploadForm: document.getElementById("upload-form"),
     dropzone: document.getElementById("dropzone"),
     fileInput: document.getElementById("file-input"),
@@ -150,10 +156,24 @@
     return typeof payload.exp === "number" && payload.exp * 1000 <= Date.now();
   }
 
+  function isAdmin() {
+    const payload = decodeToken(state.token);
+    return Boolean(payload && payload.role === "admin");
+  }
+
+  function clearAdminState() {
+    state.adminDocuments = [];
+    state.adminLoading = false;
+    if (el.adminList) el.adminList.replaceChildren();
+    if (el.adminMessage) el.adminMessage.hidden = true;
+    if (el.adminCard) el.adminCard.hidden = true;
+  }
+
   function clearSession() {
     clearStoredToken();
     state.token = "";
     state.email = "";
+    clearAdminState();
   }
 
   function handleSessionExpired() {
@@ -233,6 +253,102 @@
     return `Ocurrió un error inesperado (HTTP ${status}).`;
   }
 
+  /* Administración (solo rol admin) */
+  function renderAdminList() {
+    const fragment = document.createDocumentFragment();
+
+    state.adminDocuments.forEach((doc) => {
+      const item = document.createElement("li");
+      item.className = "document";
+
+      const main = document.createElement("div");
+      main.className = "document-main";
+
+      const name = document.createElement("p");
+      name.className = "document-name";
+      name.textContent = doc.filename || "Documento sin nombre";
+
+      const meta = document.createElement("p");
+      meta.className = "document-meta";
+      const owner = document.createElement("span");
+      owner.className = "document-owner";
+      owner.textContent = `usuario ${doc.userId || "?"} · `;
+      meta.append(owner, createTime(doc.createdAt));
+
+      const actions = document.createElement("div");
+      actions.className = "document-actions";
+      actions.append(statusBadge(doc.status));
+
+      if (doc.status === "FAILED") {
+        const retryButton = document.createElement("button");
+        retryButton.type = "button";
+        retryButton.className = "btn btn-secondary btn-small";
+        retryButton.textContent = "Reintentar";
+        retryButton.setAttribute("aria-label", `Reintentar ${doc.filename || "el documento"}`);
+        retryButton.addEventListener("click", () => retryAdminDocument(doc.documentId, retryButton));
+        actions.append(retryButton);
+      }
+
+      main.append(name, meta);
+      item.append(main, actions);
+      fragment.append(item);
+    });
+
+    el.adminList.replaceChildren(fragment);
+  }
+
+  async function loadAdminDocuments() {
+    if (state.adminLoading) return;
+    state.adminLoading = true;
+    if (el.adminRefresh) el.adminRefresh.disabled = true;
+
+    try {
+      const data = await apiFetch("/api/admin/documents");
+      if (!data || !Array.isArray(data.items)) {
+        throw new ApiError("La API devolvió una lista inválida.", "invalid_response", 0);
+      }
+      state.adminDocuments = data.items;
+      showAdminMessage("");
+      renderAdminList();
+    } catch (error) {
+      if (error instanceof SessionExpiredError) return;
+      showAdminMessage(error.message || "No se pudieron cargar los documentos.");
+    } finally {
+      state.adminLoading = false;
+      if (el.adminRefresh) el.adminRefresh.disabled = false;
+    }
+  }
+
+  async function retryAdminDocument(documentId, button) {
+    if (!documentId) return;
+    button.disabled = true;
+    button.textContent = "Reenviando…";
+
+    try {
+      await apiFetch(`/api/documents/${encodeURIComponent(documentId)}/retry`, { method: "POST" });
+      await loadAdminDocuments();
+    } catch (error) {
+      if (error instanceof SessionExpiredError) return;
+      showAdminMessage(error.message || "No se pudo reintentar el documento.");
+      button.disabled = false;
+      button.textContent = "Reintentar";
+    }
+  }
+
+  function showAdminMessage(text) {
+    setMessage(el.adminMessage, text, "error");
+  }
+
+  function syncAdminSection() {
+    if (!el.adminCard) return;
+    if (isAdmin()) {
+      el.adminCard.hidden = false;
+      loadAdminDocuments();
+    } else {
+      el.adminCard.hidden = true;
+    }
+  }
+
   /* Mensajes y vistas */
   function setMessage(node, text, kind = "error") {
     if (!text) {
@@ -302,6 +418,7 @@
       renderDocuments();
     }
     if (focus) el.appTitle.focus();
+    syncAdminSection();
   }
 
   function setAuthBusy(busy) {
@@ -378,6 +495,15 @@
   }
 
   function handleLogout() {
+    const token = state.token;
+    if (token) {
+      /* fire-and-forget: el servidor revoca el jti; si falla el logout sigue adelante */
+      fetch(`${API_BASE}/api/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        keepalive: true
+      }).catch(() => {});
+    }
     clearSession();
     stopPolling();
     state.documents = [];
@@ -871,6 +997,12 @@
       const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
       if (file) acceptFile(file);
     });
+
+    if (el.adminRefresh) {
+      el.adminRefresh.addEventListener("click", () => {
+        loadAdminDocuments();
+      });
+    }
 
     el.refreshButton.addEventListener("click", async () => {
       if (el.refreshButton.disabled) return;

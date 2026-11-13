@@ -1015,3 +1015,13 @@ button {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Administración (visible solo con rol admin) */
+.admin-card {
+  margin-top: 1.5rem;
+}
+
+.document-owner {
+  color: var(--text-muted, #6b7280);
+  font-size: 0.85rem;
+}

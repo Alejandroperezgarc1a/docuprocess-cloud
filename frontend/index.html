@@ -153,6 +153,18 @@
         </div>
         <div id="detail-content" class="detail-content"></div>
       </section>
+
+      <section id="admin-card" class="card admin-card" aria-labelledby="admin-title" hidden>
+        <div class="card-head card-head--split">
+          <div>
+            <h2 id="admin-title">Administración</h2>
+            <p class="card-sub">Documentos de todos los usuarios. Puedes reintentar los fallidos.</p>
+          </div>
+          <button id="admin-refresh" class="btn btn-secondary btn-small" type="button">Refrescar</button>
+        </div>
+        <p id="admin-message" class="message" role="alert" hidden></p>
+        <ul id="admin-list" class="document-list"></ul>
+      </section>
     </section>
   </main>
 
