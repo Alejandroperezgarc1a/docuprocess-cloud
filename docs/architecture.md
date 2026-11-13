@@ -50,6 +50,8 @@
 | `WORKER_BATCH_SIZE` | `var.worker_batch_size` (10) | worker | `10` |
 | `UPLOAD_TIMEOUT_MINUTES` | `var.upload_timeout_minutes` (15) | worker | `15` |
 | `MAX_FILE_MB` | `var.max_file_mb` (10) | worker | `10` |
+| `PROCESSING_TIMEOUT_MINUTES` | `var.processing_timeout_minutes` (30) | worker | `30` |
+| `ADMIN_EMAILS` | `var.admin_emails` (vacío) | API | vacío |
 | `LOG_LEVEL` | fijo `INFO` en AWS | worker | `INFO` |
 
 Reglas:

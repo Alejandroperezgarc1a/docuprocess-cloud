@@ -347,6 +347,28 @@ variable "cloudtrail_mode" {
   }
 }
 
+variable "processing_timeout_minutes" {
+  description = "Minutos tras los cuales un documento atascado en PROCESSING se marca FAILED (processing timeout)."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.processing_timeout_minutes >= 1 && var.processing_timeout_minutes <= 10080
+    error_message = "processing_timeout_minutes debe estar entre 1 y 10080."
+  }
+}
+
+variable "admin_emails" {
+  description = "Correos con rol admin en la app (se promueven al arrancar la API). Lista HCL."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for email in var.admin_emails : can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", email))])
+    error_message = "admin_emails debe contener correos válidos."
+  }
+}
+
 variable "docs_lifecycle_expiration_days" {
   description = "Días para expirar objetos bajo uploads/ en el bucket de documentos. 0 desactiva la regla."
   type        = number
