@@ -148,7 +148,117 @@ detecta comparando el documento con su bitácora.
 | Costo en la demo | Instancia `db.t3.micro` encendida 24/7 | Por petición (céntimos) |
 | Ajuste al problema | Cuentas y autenticación | Estado, cola e historial |
 
-## 5. Antipatrones que se evitaron
+## 5. Patrones de acceso
+
+Cada consulta del sistema está resuelta por una clave o un índice concreto; ninguna usa `Scan`.
+La tabla se obtuvo del código (`app/api/src/db.ts`, `app/api/src/aws.ts` y `app/worker/src/aws.ts`).
+
+| Consulta | Base, tabla o índice | Operación | Quién la hace |
+| --- | --- | --- | --- |
+| Registrar un usuario | RDS, `users` | `INSERT` con `UNIQUE(email)`; un duplicado devuelve 409 | API |
+| Iniciar sesión | RDS, `users` | `SELECT … WHERE email = ?` y comparación bcrypt | API |
+| Readiness al arrancar | RDS | `SELECT 1` (`GET /api/ready`) | API, llamada por el userData |
+| Crear un documento | `documents` + `document_events` | `TransactWriteItems`: `Put` con `attribute_not_exists(documentId)` + `Put` del evento | API |
+| Listar los documentos del usuario | `documents`, GSI `userId-createdAt` | `Query` por `userId`, descendente, máximo 50 | API |
+| Ver el detalle de un documento | `documents`, tabla base | `GetItem` por `documentId` con `ConsistentRead` y verificación de dueño | API |
+| Ver la bitácora de un documento | `document_events`, tabla base | `Query` por `documentId`, ascendente por `eventAt`, máximo 200 | API |
+| Tomar trabajo pendiente | `documents`, GSI `status-createdAt` | `Query` con `status = PENDING`, ascendente (los más antiguos primero) | Worker |
+| Reclamar un documento | `documents` + `document_events` | `UpdateItem` con `#s = :pending` → `PROCESSING` + `Put` del evento | Worker |
+| Cerrar un documento | `documents` + `document_events` | `UpdateItem` con `#s = :processing` → `DONE` o `FAILED` + `Put` del evento | Worker |
+| Vencer una subida que nunca llegó | `documents` + `document_events` | `UpdateItem` con `#s = :pending` → `FAILED "upload timeout"` + `Put` del evento | Worker |
+| Auditar a un usuario entre documentos | `document_events`, GSI `userId-eventAt` | `Query` por `userId` | Operador (consola o CLI); la app no lo expone |
+| Auditar todos los cambios de un día | `document_events`, GSI `day-eventAt` | `Query` por `eventDay` | Operador (consola o CLI); la app no lo expone |
+
+Observaciones:
+
+- Los GSI son de consistencia eventual. Por eso el worker no confía en el estado leído del índice:
+  el `UpdateItem` condicional sobre la tabla base es el que decide, y el detalle que ve el usuario
+  se lee con `ConsistentRead`.
+- Las dos consultas de auditoría (`userId-eventAt` y `day-eventAt`) están diseñadas pero no tienen
+  endpoint; se usan desde la consola o la CLI durante una revisión.
+
+## 6. Alternativas descartadas
+
+### 6.1. Todo en RDS
+
+Una sola base MySQL con tablas `users`, `documents` y `document_events` es viable a esta escala y
+tiene ventajas reales: un solo motor que operar, joins entre usuarios y documentos, y consultas ad
+hoc. Se descartó por estas razones:
+
+- **Acoplamiento de carga.** El worker sondea la cola cada 5 segundos desde 2 a 4 instancias; en
+  RDS eso compite por CPU y conexiones con el login, que ya es la operación cara (bcrypt cost 12) y
+  la que estresa la prueba de carga. Una sola `db.t3.micro` sería el punto de saturación de todo el
+  sistema.
+- **Cola sobre SQL.** Para que dos workers no tomen la misma fila habría que usar
+  `SELECT … FOR UPDATE SKIP LOCKED` dentro de una transacción, con conexiones abiertas mientras se
+  reclama. En DynamoDB el reclamo es una sola petición HTTP condicional, sin conexiones ni bloqueos.
+- **Esquema variable.** `result` depende del tipo de archivo (páginas para PDF, ancho y alto para
+  imágenes); en SQL serían columnas nulas o una tabla de atributos.
+- **Crecimiento y permisos de la bitácora.** En MySQL la inmutabilidad dependería de `GRANT`s sobre
+  un usuario de base de datos que la propia API administra; en DynamoDB la impone la política de
+  recurso, fuera del alcance de la aplicación.
+- **Disponibilidad.** RDS es Single-AZ en este despliegue; con todo en RDS, su caída detendría
+  también el procesamiento de documentos. Hoy una caída de RDS solo afecta registro y login.
+
+### 6.2. SQS como cola
+
+SQS es la opción estándar para desacoplar productor y consumidor. Aquí se usa en su lugar el GSI
+`status-createdAt` más el `UpdateItem` condicional.
+
+**Por qué basta en este proyecto:**
+
+- El volumen es bajo (una demo con decenas de documentos) y el sondeo cada 5 segundos es una
+  latencia aceptable.
+- El estado del documento ya tiene que vivir en DynamoDB para la API y la bitácora. Con SQS habría
+  dos fuentes de verdad (el mensaje y el ítem) que mantener consistentes: si la API escribe el ítem
+  y falla al encolar, el documento queda huérfano; si encola primero, el worker puede recibir un
+  mensaje de un ítem que no existe.
+- La exclusión mutua la da la condición `#s = :pending`: aunque varios workers lean el mismo
+  `PENDING` del índice, solo uno gana. SQS estándar entrega *at-least-once*, así que de todas
+  formas haría falta esa misma condición para que el procesamiento sea idempotente.
+- Un componente menos que crear, asegurar con política de recurso y alcanzar desde subredes sin
+  NAT (SQS necesitaría su propio interface endpoint).
+
+**Qué ganaríamos con SQS:**
+
+- **Recuperación de trabajos huérfanos.** Con el diseño actual, si una instancia termina (escalado
+  hacia abajo o reemplazo del ASG) mientras un documento está en `PROCESSING`, ese documento queda
+  en ese estado: el código no tiene un barrido que lo devuelva a `PENDING`. En SQS el *visibility
+  timeout* hace que el mensaje vuelva a la cola automáticamente.
+- **Dead-letter queue.** Los mensajes que fallan N veces se apartan solos para revisión.
+- **Entrega por evento en vez de sondeo.** Con notificaciones de S3 a SQS el worker solo trabaja
+  cuando el archivo existe, sin `HeadObject` de documentos todavía no subidos y con long polling
+  en lugar de consultas periódicas al índice.
+- **Escalado por profundidad de cola.** La métrica `ApproximateNumberOfMessagesVisible` permite
+  escalar los workers por trabajo pendiente y no solo por CPU.
+
+Si el volumen creciera, el siguiente paso sería S3 → SQS → worker, manteniendo DynamoDB como
+fuente de verdad del estado y el `UpdateItem` condicional como garantía de idempotencia.
+
+### 6.3. RDS Multi-AZ
+
+El módulo `rds` crea la instancia con `multi_az = false`. Multi-AZ mantiene una réplica síncrona en
+otra AZ y hace *failover* automático, pero el Sandbox de AWS Academy admite **exclusivamente
+despliegues Single-AZ** (el enunciado lo lista entre sus restricciones y la rúbrica de datos exige
+cumplirla). Aun sin esa restricción, duplicaría el costo de la instancia y alargaría la creación en
+un laboratorio que se destruye y recrea en cada sesión.
+
+Consecuencia aceptada: si la AZ de RDS falla, el registro y el login quedan caídos hasta que la
+instancia se recupere. Los documentos (DynamoDB y S3, regionales) y el ALB y el ASG (dos AZ) siguen
+disponibles, y el health check del ALB (`/api/health`) no depende de MySQL, así que el ASG no
+recicla instancias por una caída de la base.
+
+En producción cambiaría:
+
+- `multi_az = true` (o Aurora MySQL con una réplica en otra AZ). El subnet group ya cubre dos AZ,
+  así que no hay que rehacer la red.
+- `backup_retention_period` de 7 días o más, `deletion_protection = true` y snapshot final al
+  destruir (`skip_final_snapshot = false`).
+- La API debería reintentar conexiones durante el *failover* (unos 60 a 120 segundos), porque el
+  endpoint DNS cambia de IP.
+- Probablemente RDS Proxy, para absorber las reconexiones de varias instancias del ASG.
+
+## 7. Antipatrones que se evitaron
 
 - **Usar DynamoDB como base relacional:** hacer `Scan` para listar usuarios o documentos es caro y
   lento; por eso cada consulta tiene su índice.
@@ -162,7 +272,7 @@ detecta comparando el documento con su bitácora.
 - **Mezclar la carga del worker con la de autenticación:** RDS y DynamoDB escalan y fallan por
   separado.
 
-## 6. Cuándo cambiar la decisión
+## 8. Cuándo cambiar la decisión
 
 | Si el proyecto… | Entonces… |
 | --- | --- |
@@ -172,10 +282,10 @@ detecta comparando el documento con su bitácora.
 | procesara más de 100 ítems por transacción | dividir la transacción o usar un patrón saga |
 | necesitara retención legal de eventos por años con consultas complejas | exportar a S3 + Athena, manteniendo DynamoDB como registro operativo |
 
-## 7. Referencias
+## 9. Referencias
 
 - AWS, *Amazon RDS vs. Amazon DynamoDB* (documentación de decisión).
 - AWS, *DynamoDB core components*: claves, índices y capacidad.
 - AWS, *DynamoDB transactions*: `TransactWriteItems` y límites.
 - AWS, *RDS for MySQL*: Single-AZ, backups y point-in-time recovery.
-- `docs/architecture.md`, secciones 4, 4.1 y 11 (contrato y permisos reales del proyecto).
+- `docs/architecture.md`, vista general (diagramas, permisos y restricciones del Sandbox) y contratos 4, 4.1 y 11.
