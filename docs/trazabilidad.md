@@ -24,7 +24,7 @@
 | 5 | RDS MySQL Single-AZ `db.t3.micro` para cuentas y autenticación | apply OK: docuprocess-dev-mysql db.t3.micro disponible (endpoint c9pldrtatyja) | Verificado | 2026-11-13 | — |
 | 6 | S3 para archivos | apply OK: buckets docuprocess-dev-{docs,frontend,artifacts}-47cb5959 con PAB/SSE/versioning/CORS/OAC; subida PUT prefirmada OK (3/3) | Verificado | 2026-11-13 | — |
 | 7 | DynamoDB para metadatos, historial y resultados | apply OK: tablas ACTIVE; document_events: PENDING→PROCESSING→DONE sin duplicados (3/3 docs) | Verificado | 2026-11-13 | — |
-| 8 | SNS para notificaciones | apply OK: topic docuprocess-dev-alerts + suscripción email ingesoftv@gmail.com | Riesgo | 2026-11-13 | Suscripción PendingConfirmation; Terraform no confirma el correo — el usuario debe confirmarla |
+| 8 | SNS para notificaciones | apply OK: topic docuprocess-dev-alerts + suscripción email ingesoftv@gmail.com confirmada; worker `sns_published` (DONE) y CloudWatch `Delivered=3`, `Failed=0` | Verificado | 2026-11-13 | Terraform no puede confirmar la suscripción: la confirmación del buzón es manual (una vez) |
 | 9 | CloudWatch: alarmas de CPU de EC2 y métricas de RDS | Módulo `monitoring` previsto (B9) | Pendiente B9 | 2026-11-11 | — |
 | 10 | CloudTrail para auditoría | Módulo `monitoring` previsto (B9) | Pendiente B9 | 2026-11-11 | — |
 | 11 | IaC modular (Terraform) | apply desde estado vacío OK: Plan 68 to add, 68/68, APPLY3_EXIT=0; módulos network/storage/dynamodb/rds/compute/sns/cdn | Verificado | 2026-11-13 | monitoring pendiente de B9/B10 |
@@ -34,7 +34,7 @@
 | 15 | Comparativa RDS vs. DynamoDB | `docs/rds-vs-dynamodb.md` | Verificado | 2026-11-11 | — |
 | 16 | Diagrama detallado y flujo | `README.md` (componentes) y `docs/architecture.md` §4.1 (datos) | Implementado | 2026-11-11 | El diagrama completo con la tabla de eventos es B10 |
 | 17 | Guía de despliegue y troubleshooting | README (mínimo) | Pendiente A9 | 2026-11-11 | — |
-| 18 | Demo: subida S3 → worker → DynamoDB → SNS | Flujo E2E 2026-11-13 (vía CloudFront): registro/login; PDF→DONE pages=1; PNG→DONE width/height=1; corrupt.pdf→FAILED unsupported file type; doc ajeno 404 | Verificado | 2026-11-13 | SNS correo pendiente de confirmación (PendingConfirmation) |
+| 18 | Demo: subida S3 → worker → DynamoDB → SNS | Flujo E2E 2026-11-13 (vía CloudFront): registro/login; PDF→DONE pages=1; PNG→DONE width/height=1; corrupt.pdf→FAILED unsupported file type; doc ajeno 404; correo SNS por documento | Verificado | 2026-11-13 | — |
 | 19 | Prueba de carga para el ASG | Scripts previstos (A8) | Pendiente A8 | 2026-11-11 | — |
 
 ## 3. Criterios de terminado de B3
@@ -59,12 +59,12 @@
 
 Rama `feat/C3-integracion-e2e-una-sola-cuenta`; PR #50 (Closes #16). Aplicado, probado y documentado en una sola cuenta Sandbox (`AWS_PROFILE=academy`):
 
-- Apply desde estado vacío (`terraform init` + `plan -out=tfplan3.bin` → `68 to add, 0 change, 0 destroy`; `APPLY3_EXIT=0`): red (VPC vpc-0140c57f0081acafc, IGW, RTBs, 4 subnets, SGs, endpoints), S3 `docuprocess-dev-{artifacts,docs,frontend}-47cb5959` (PAB, SSE, versionado, CORS docs, política OAC frontend), RDS `docuprocess-dev-mysql` (db.t3.micro, single-AZ, `available`), DynamoDB `documents`/`document_events`, SNS `docuprocess-dev-alerts` + suscripción email a ingesoftv@gmail.com (**PendingConfirmation**; Terraform no confirma correos de terceros), ALB `docuprocess-dev-alb` → TG `docuprocess-dev-app`, ASG `docuprocess-dev-app-v1` (2× t3.micro), Auth/API + worker en mismas instancias.
+- Apply desde estado vacío (`terraform init` + `plan -out=tfplan3.bin` → `68 to add, 0 change, 0 destroy`; `APPLY3_EXIT=0`): red (VPC vpc-0140c57f0081acafc, IGW, RTBs, 4 subnets, SGs, endpoints), S3 `docuprocess-dev-{artifacts,docs,frontend}-47cb5959` (PAB, SSE, versionado, CORS docs, política OAC frontend), RDS `docuprocess-dev-mysql` (db.t3.micro, single-AZ, `available`), DynamoDB `documents`/`document_events`, SNS `docuprocess-dev-alerts` + suscripción email a ingesoftv@gmail.com (confirmada; Terraform no puede confirmar correos de terceros), ALB `docuprocess-dev-alb` → TG `docuprocess-dev-app`, ASG `docuprocess-dev-app-v1` (2× t3.micro), Auth/API + worker en mismas instancias.
 - Frontend servido por CloudFront `d39ytkzrdg5rpz.cloudfront.net` (OAC → S3 + `/api/*` → ALB). `/` y `/api/health` → 200 (`{"status":"ok"}`).
 - E2E desde el navegador: registro/login, PDF DONE (pages=1), PNG DONE (1×1), PDF corrupto FAILED (`unsupported file type`), documentos de un usuario no visibles para otro (404). `document_events`: PENDING→PROCESSING→DONE sin duplicados.
 - Tolerancia a fallo: `terminate-instances` de una instancia → ALB siguió 200 (la instancia restante servía), ASG la reemplazó (5xx transitorios ~1–4 min durante draining/registro, comportamiento esperado), target group quedó 2/2 healthy.
 - ENTREGA: **viernes 13 de noviembre de 2026** (milestone "Entrega 13 nov"). C4 (#23) queda para el 17 nov en cuenta limpia.
-- Pendiente/observaciones para A9: huérfanos sin tag que hicieron fallar la primera verificación de cuenta vacía (apply3 pasó solo tras borrarlos manualmente); tfstate de otra cuenta inconsistente → reset documentado (tfstate `.obsoleto-20261113`, previo `previa-20261112`); SNS solo PendingConfirmation (suscripción externa); CloudFront 504 transitorio con draining; `voc-cancel-cred` a mitad de apply (credenciales voclabs revocadas, relanzar lab + re-plan/apply idempotente); `tfplan*.bin` nunca se commitean.
+- Pendiente/observaciones para A9: huérfanos sin tag que hicieron fallar la primera verificación de cuenta vacía (apply3 pasó solo tras borrarlos manualmente); tfstate de otra cuenta inconsistente → reset documentado (tfstate `.obsoleto-20261113`, previo `previa-20261112`); SNS exige confirmación manual del buzón (Terraform no puede confirmarla; verificado tras confirmar el correo); CloudFront 504 transitorio con draining; `voc-cancel-cred` a mitad de apply (credenciales voclabs revocadas, relanzar lab + re-plan/apply idempotente); `tfplan*.bin` nunca se commitean.
 
 ## 5. Riesgos abiertos
 
