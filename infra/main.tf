@@ -253,3 +253,15 @@ module "cdn" {
 }
 
 # --- monitoring (B10)
+
+module "monitoring" {
+  source = "./modules/monitoring"
+
+  name_prefix            = local.name_prefix
+  asg_name               = module.compute.asg_name
+  db_instance_identifier = module.rds.db_instance_identifier
+  sns_topic_arn          = module.sns.topic_arn
+  force_destroy_buckets  = var.force_destroy_buckets
+  cloudtrail_mode        = var.cloudtrail_mode
+  common_tags            = local.common_tags
+}

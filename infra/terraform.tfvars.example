@@ -19,3 +19,7 @@ jwt_secret  = "CAMBIAR-minimo-32-caracteres-xxxxxxxxxx" # openssl rand -hex 32
 # enable_nat_gateway         = false
 # enable_interface_endpoints = true
 # docs_lifecycle_expiration_days = 0   # 0 desactiva la expiración de uploads/
+
+# CloudTrail: "event-history" usa el historial de eventos (Sandbox: CreateTrail denegado).
+# "trail" crea el bucket dedicado + aws_cloudtrail (requiere cloudtrail:CreateTrail).
+# cloudtrail_mode = "event-history"
