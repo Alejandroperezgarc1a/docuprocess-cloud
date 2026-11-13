@@ -8,53 +8,61 @@ Proyecto final del curso Infraestructura III, Universidad ICESI.
 
 ```mermaid
 flowchart LR
-    user["Usuario (navegador)"]
+    user["Usuario - navegador"]
     mail["Correo del equipo"]
 
-    cf["CloudFront<br/>(DNS por defecto, HTTPS)"]
+    cf["CloudFront - HTTPS, dominio por defecto"]
 
     subgraph region["AWS us-east-1"]
         subgraph vpc["VPC 10.0.0.0/16"]
             igw["Internet Gateway"]
-            subgraph pub["Subredes públicas: 10.0.1.0/24 (AZ a) y 10.0.2.0/24 (AZ b)"]
-                alb["Application Load Balancer"]
-                nat["NAT Gateway<br/>(opcional)"]
+            subgraph pub["Subredes públicas 10.0.1.0/24 y 10.0.2.0/24"]
+                alb["Application Load Balancer - HTTP 80"]
             end
-            subgraph priv["Subredes privadas: 10.0.11.0/24 (AZ a) y 10.0.12.0/24 (AZ b)"]
-                subgraph asg["Auto Scaling Group (2 a 4, CPU 60 %)"]
-                    ec2a["EC2 AZ a<br/>API + worker"]
-                    ec2b["EC2 AZ b<br/>API + worker"]
+            subgraph priv["Subredes privadas 10.0.11.0/24 y 10.0.12.0/24 - sin NAT"]
+                subgraph asg["Auto Scaling Group 2 a 4, CPU 60 por ciento"]
+                    ec2a["EC2 AZ a - API + worker"]
+                    ec2b["EC2 AZ b - API + worker"]
                 end
-                rds[("RDS MySQL<br/>db.t3.micro Single-AZ")]
-                vpce["VPC endpoints<br/>S3, DynamoDB, SSM, SNS"]
+                rds[("RDS MySQL - db.t3.micro Single-AZ")]
+                ifep["Interface endpoints - SSM y SNS"]
             end
+            gwep["Gateway endpoints - S3 y DynamoDB"]
         end
 
         s3front[("S3 frontend")]
         s3docs[("S3 documentos")]
         s3art[("S3 artefactos")]
         ddb[("DynamoDB documents + document_events")]
+        ssm["Parameter Store - secretos"]
         sns["SNS alertas"]
-        cw["CloudWatch alarmas"]
-        trail["CloudTrail"]
-        s3trail[("S3 CloudTrail")]
+        cw["CloudWatch - alarmas EC2 y RDS"]
+        trail["CloudTrail - historial de eventos"]
     end
 
-    user -->|HTTPS| cf
-    cf -->|"default (OAC)"| s3front
+    user -->|"HTTPS"| cf
+    cf -->|"por defecto, OAC"| s3front
     cf -->|"/api/* sin caché"| alb
     user -.->|"PUT con URL prefirmada"| s3docs
     igw --- alb
-    alb --> ec2a & ec2b
-    ec2a & ec2b --> rds
-    ec2a & ec2b --> vpce
-    vpce --> s3docs & ddb & sns & s3art
-    ec2a & ec2b -.-> nat
-    nat -.-> igw
-    cw -->|alarmas EC2 y RDS| sns
-    sns -->|email| mail
-    trail --> s3trail
+    alb --> ec2a
+    alb --> ec2b
+    ec2a --> rds
+    ec2b --> rds
+    ec2a --> gwep
+    ec2b --> gwep
+    ec2a --> ifep
+    ec2b --> ifep
+    gwep --> s3docs
+    gwep --> s3art
+    gwep --> ddb
+    ifep --> ssm
+    ifep --> sns
+    cw -->|"alarmas"| sns
+    sns -->|"email"| mail
 ```
+
+El diagrama detallado (CIDR, security groups, flujo de un documento, permisos y restricciones del Sandbox) está en [`docs/architecture.md`](docs/architecture.md).
 
 ## Stack
 
@@ -118,7 +126,7 @@ terraform -chdir=infra apply
 # Revisar el correo de AWS y confirmar la suscripción de SNS antes de probar las alertas.
 ```
 
-`deploy-frontend.sh` comprueba las credenciales y la cuenta, lee los outputs de B2/B7, genera `frontend/public/config.js`, construye el frontend y publica `frontend/dist/` con cabeceras de caché e invalidación. Falla antes de escribir si el estado de Terraform es de otra cuenta o si B7 no está aplicado. El script hereda `AWS_PROFILE`; en el Sandbox se validó con `AWS_PROFILE=academy` (cuenta `<AWS_ACCOUNT_ID>`). La guía completa y el troubleshooting se completan con A9; las decisiones y la evidencia de B9 están en `docs/informe-b9.md`.
+`deploy-frontend.sh` comprueba las credenciales y la cuenta, lee los outputs de B2/B7, genera `frontend/public/config.js`, construye el frontend y publica `frontend/dist/` con cabeceras de caché e invalidación. Falla antes de escribir si el estado de Terraform es de otra cuenta o si B7 no está aplicado. La guía completa y el troubleshooting se completan con A9; las decisiones y la evidencia de B9 están en `docs/informe-b9.md`.
 
 `package-app.sh` va **antes** de cada `apply` que deba llevar código nuevo: Terraform sube el zip con su hash en el nombre y, si cambió, reemplaza las instancias sin caída del servicio.
 
