@@ -110,11 +110,11 @@ El tablero de [GitHub Projects](https://github.com/users/Alejandroperezgarc1a/pr
 | 3 | Jue 12 – Vie 13 | Notificaciones, CDN y monitoreo | B5 (cierre), A4, B7, B10 |
 | 4 | Jue 12 – Vie 13 | Integración y cierre | B9, C3, A8, A9, B1 (documentación), C4 |
 
-La semana del 2 al 6 de noviembre queda limitada a las fundaciones. B2, B3, B6, B5, B7, B8, A3, A4 y A5 se movieron a la semana del 9 para no concentrar tareas. El cierre técnico estimado es el **viernes 13 de noviembre**.
+La semana del 2 al 6 de noviembre quedó limitada a las fundaciones. B2, B3, B6, B5, B7, B8, A3, A4 y A5 se movieron a la semana del 9 para no concentrar tareas. El cierre técnico fue el **viernes 13 de noviembre de 2026**; la evidencia de la prueba de carga (A8) y el despliegue en vivo desde `main` (C4) quedaron cerrados ese día (entrega final).
 
 ## Cómo desplegar
 
-La guía completa paso a paso (credenciales del Sandbox, verificación, destrucción y solución de problemas) está en [`docs/guias/despliegue.md`](docs/guias/despliegue.md). El orden resumido es:
+La guía operativa completa (preflight del Sandbox, despliegue automatizado, verificación E2E, importación de recursos huérfanos y solución de problemas) está en [`docs/guias/despliegue-automatizado-sandbox.md`](docs/guias/despliegue-automatizado-sandbox.md) y en su versión PDF [`despliegue-automatizado-sandbox.pdf`](docs/guias/despliegue-automatizado-sandbox.pdf). La guía rápida de referencia sigue disponible en [`docs/guias/despliegue.md`](docs/guias/despliegue.md). El orden resumido es:
 
 ```bash
 aws sts get-caller-identity                                 # confirmar la cuenta del Sandbox antes de aplicar
@@ -126,11 +126,15 @@ terraform -chdir=infra init && terraform -chdir=infra apply
 # Revisar el correo de AWS y confirmar la suscripción de SNS antes de probar las alertas.
 ```
 
-`deploy-frontend.sh` comprueba las credenciales y la cuenta, lee los outputs de B2/B7, genera `frontend/public/config.js`, construye el frontend y publica `frontend/dist/` con cabeceras de caché e invalidación. Falla antes de escribir si el estado de Terraform es de otra cuenta o si B7 no está aplicado. Las decisiones y la evidencia de B9 están en `docs/informe-b9.md`.
+`deploy-frontend.sh` comprueba las credenciales y la cuenta, lee los outputs de B2/B7, genera `frontend/public/config.js`, construye el frontend y publica `frontend/dist/` con cabeceras de caché e invalidación. Falla antes de escribir si el estado de Terraform es de otra cuenta o si B7 no está aplicado. La evidencia de B9 está en la sección de verificación de la guía operativa.
 
-La prueba de carga del ASG está en `scripts/load-test.sh` (sección 5 de la guía).
+La prueba de carga del ASG está en `scripts/load-test.sh` (sección 5.8 de la guía operativa).
 
 `package-app.sh` va **antes** de cada `apply` que deba llevar código nuevo: Terraform sube el zip con su hash en el nombre y, si cambió, reemplaza las instancias sin caída del servicio.
+
+## Cierre y presentación
+
+El historial requisito → evidencia del proyecto está en [`docs/trazabilidad.md`](docs/trazabilidad.md). A8 (escalado 2→4 bajo carga) y B10 (alarmas → SNS y `LookupEvents`) quedaron en estado **Verificado** el 13 de noviembre de 2026.
 
 ## Desarrollo local
 

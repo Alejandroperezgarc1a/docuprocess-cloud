@@ -1,10 +1,10 @@
 # Guía de despliegue y solución de problemas (AWS Academy Sandbox)
 
-Esta guía cubre el despliegue completo de DocuProcess Cloud desde una cuenta vacía del Sandbox de AWS Academy (Learner Lab), la verificación final y la destrucción del entorno, más la solución a los tropiezos conocidos del Sandbox. Tiempo estimado: 15–25 minutos.
+Esta guía cubre el despliegue completo de DocuProcess Cloud desde una cuenta vacía del Sandbox de AWS Academy (Learner Lab), la verificación final y la destrucción del entorno, más la solución a los tropiezos conocidos del Sandbox. Tiempo estimado: 30–45 minutos para el primer despliegue completo. La versión ampliada, con preflight, importación de huérfanos y verificación por capas, está en [`despliegue-automatizado-sandbox.md`](despliegue-automatizado-sandbox.md) y su [PDF](despliegue-automatizado-sandbox.pdf).
 
 ## 0. Requisitos
 
-- **Cuenta**: AWS Academy → Learner Lab, región **us-east-1**, plan de **redacción de recursos permitida** por el Sandbox (sin IAM propio, sin Lambda, instancias pequeñas, EBS `gp2`).
+- **Cuenta**: AWS Academy → Learner Lab, región **us-east-1**, plan de **creación de recursos permitida** por el Sandbox (sin IAM propio, sin Lambda, instancias pequeñas, EBS `gp2`).
 - **Rol obligatorio** (no se puede crear): `AmazonSSMRoleForInstancesQuickSetup` — la consola del lab lo trae. Verificar (paso 1.4).
 - **Herramientas locales**: `aws` CLI v2, `terraform` ≥ 1.9 (`infra/.terraform.lock.hcl`), `node` ≥ 22 (el CI y el userData usan AL2023 + `nodejs24`), `npm`, `ab` (apache2-utils/httpd-tools), `jq`, `curl`, `zip`, `python3`, `bash` ≥ 5, `shellcheck` (opcional).
 - **Credenciales vigentes** de la sesión del laboratorio (expiran con la sesión; ver §1).
@@ -50,7 +50,7 @@ cp infra/terraform.tfvars.example infra/terraform.tfvars
 
 ./scripts/package-app.sh           # Node ci + build → dist/docuprocess-app.zip (determinista)
 terraform -chdir=infra init
-terraform -chdir=infra apply       # ~68 recursos; la primera vez crea red, S3, RDS, DDB, SNS, EC2/ASG, CF, CloudWatch
+terraform -chdir=infra apply       # ~73 recursos; la primera vez crea red, S3, RDS, DDB, SNS, EC2/ASG, CF, CloudWatch
 ```
 
 Notas del `apply`:
@@ -119,11 +119,11 @@ terraform -chdir=infra destroy   # el provisioner terraform_data vacía los buck
 | `InvalidClientTokenId` / `ExpiredToken` en cualquier paso | Sesión del lab expirada o `voc-cancel-cred` a mitad | Abrir el lab de nuevo → re-copiar credenciales → re-`export AWS_PROFILE=academy`; `terraform plan -refresh=true` y reaplicar (idempotente) |
 | Precondición `dist/docuprocess-app.zip` no existe | Se saltó `package-app.sh` | `./scripts/package-app.sh` y re-`apply` |
 | `ParameterAlreadyExists` en `aws_ssm_parameter.db_password` / `jwt_secret` | Despliegue previo en la misma cuenta dejó los parámetros | `aws ssm delete-parameter --name /docuprocess-dev/db_password` (y `jwt_secret`) o `terraform import`; nunca `overwrite` |
-| Apply desde "cuenta vacía" falla por recursos sin tag | `voc-cancel-cred` u otro apply abortado dejó huérfanos (buckets, RDS, alarmas no etiquetados) | `terraform plan -refresh=true`; borrar huérfanos; aplicar de nuevo. Estado sano del repo: 68 add / 0 change / 0 destroy |
+| Apply desde "cuenta vacía" falla por recursos sin tag | `voc-cancel-cred` u otro apply abortado dejó huérfanos (buckets, RDS, alarmas no etiquetados) | `terraform plan -refresh=true`; borrar huérfanos; aplicar de nuevo. Estado sano del repo: ~73 add / 0 change / 0 destroy |
 | Alarmas CloudWatch sin correo destino | Suscripción SNS `PendingConfirmation` | Confirmar el correo (una sola vez por cuenta); reenviar confirmación con `aws sns resubscribe` si fue borrada |
 | CloudFront responde **504** durante el relanzamiento | Draining/deregistration del target group tras reemplazo de instancias | Esperar 1–4 min; no re-aplicar en mitad de la demo; verificar `/api/health` en el ALB directamente |
 | El documento queda `PROCESSING` para siempre y el frontend hace polling sin fin | El worker murió tras el claim (OOM, deploy, timeout) — no hay reaper | Resetear el ítem (sin tocar la bitácora, que es append-only): `aws dynamodb update-item --table-name documents --key '{"documentId":{"S":"<id>"}}' --update-expression "SET #s = :pending" --expression-attribute-names '{"#s":"status"}' --expression-attribute-values '{":pending":{"S":"PENDING"}}'` o borrar el ítem y re-subir. Mejor preparado: no matar el worker durante la demo |
-| Alta de documento devuelve **503** | SCP del Sandbox deniega `dynamodb:TransactWriteItems` (o falta el permiso de recurso) | Activar `enable_dynamodb_transactions = false` en `terraform.tfvars` (escritura secuencial con evento de auditoría sin transacción; ver `docs/rds-vs-dynamodb.md`) y reaplicar/reiniciar worker |
+| Alta de documento devuelve **503** | Se añadió `dynamodb:TransactWriteItems` a la resource policy (acción inválida) o falta el permiso de ítem | Activar `enable_dynamodb_transactions = false` en `terraform.tfvars` (escritura secuencial con evento de auditoría sin transacción; ver `docs/rds-vs-dynamodb.md`) y reaplicar/reiniciar worker |
 | "Imagen: blank screen" al servir el frontend sin build | Se sirve `frontend/` crudo y `import.meta.env` es undefined | Siempre publicar con `deploy-frontend.sh` (Vite) y testear `dist/` |
 | PUT prefirmado rechazado (403/CORS) | Origen no permitido en CORS del bucket docs, o Content-Type distinto al declarado | Re-aplicar infra (CORS incluye `https://<cloudfront_domain>`); subir con exactamente el `Content-Type` declarado |
 | `db_password` expuesto en el estado local | `terraform.tfstate` del Sandbox | No compartir el archivo; destruir el entorno al cerrar el lab (§3) |
@@ -148,5 +148,5 @@ Satura `/api/auth/login` (bcrypt, costo 12) contra **el ALB** (no CloudFront) y 
 - [ ] Sesión del lab iniciada con tiempo suficiente (credenciales no vencidas).
 - [ ] `./scripts/deploy-frontend.sh` ejecutado y `config.js` verificado (`curl …/config.js` → `apiBaseUrl: ""`).
 - [ ] Subida real PDF y PNG; corrupto → `FAILED`; documento ajeno → 404.
-- [ ] Alarmas CloudWatch `docuprocess-dev-*` visibles en la consola (CPU EC2, RDS CPU/connections/storage) → publican a SNS (ver `docs/informe-b10.md` cuando B10 cierre su evidencia).
+- [ ] Alarmas CloudWatch `docuprocess-dev-*` visibles en la consola (CPU EC2, RDS CPU/connections/storage) → publican a SNS (ver la sección de monitoreo de la guía operativa).
 - [ ] `scripts/load-test.sh` corrido al menos una vez con evidencia capturada (A8).
