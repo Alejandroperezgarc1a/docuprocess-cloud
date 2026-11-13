@@ -1,6 +1,6 @@
 # Informe C4 — Despliegue desde cero en cuenta limpia
 
-> **Estado (2026-11-13 ~17:00–18:00 UTC): ejecutado.** Despliegue en vivo desde `main` en la sesión de entrega, cuenta voclabs (491699813584), el mismo día de la entrega final (13 de noviembre de 2026). Este documento refleja lo ocurrido, sin adornos.
+> **Estado (2026-11-13 ~17:00–18:00 UTC): ejecutado.** Despliegue en vivo desde `main` en la sesión de entrega, cuenta voclabs (<AWS_ACCOUNT_ID>), el mismo día de la entrega final (13 de noviembre de 2026). Este documento refleja lo ocurrido, sin adornos.
 
 ## Objetivo
 
@@ -32,7 +32,7 @@ El laboratorio **no estaba limpio**: al reutilizarlo, conservó recursos de un d
 | Buckets S3 | `docuprocess-dev-{docs,frontend,artifacts}-77d1730d` |
 | RDS `docuprocess-dev-mysql` | `available` (reutilizado; db.t3.micro Single-AZ) |
 | DynamoDB | `documents`, `document_events` activas |
-| SNS `docuprocess-dev-alerts` | suscripción `ingesoftv@gmail.com` = **PendingConfirmation** al desplegar; confirmada después (13-nov, ver `docs/informe-b10.md`) |
+| SNS `docuprocess-dev-alerts` | suscripción `<TEAM_EMAIL>` = **PendingConfirmation** al desplegar; confirmada después (13-nov, ver `docs/informe-b10.md`) |
 | CloudTrail | modo `event-history` (sin trails; documentado) |
 | Alarmas (4) | todas **OK**, 1 acción hacia SNS |
 

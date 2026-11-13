@@ -37,14 +37,14 @@ Aplicado junto con #50 + #51 + #52 (apply de 73 recursos):
 
 ## Evidencia viva — sesión de la tarde del 13-nov (despliegue desde cero)
 
-En la sesión de despliegue desde cero de la entrega, **las APIs de lectura sí respondieron** (cuenta voclabs 491699813584). Evidencia capturada:
+En la sesión de despliegue desde cero de la entrega, **las APIs de lectura sí respondieron** (cuenta voclabs <AWS_ACCOUNT_ID>). Evidencia capturada:
 
 - `aws ec2 describe-instances` → 2 instancias `running` en us-east-1a/1b (`i-01ad8be4d7168cd5f`, `i-03f1436f858e72c8c`).
 - `aws autoscaling describe-auto-scaling-groups` → `docuprocess-dev-app-v1`: Desired=2, InService=2, Pending=0.
 - `aws elbv2 describe-target-health` → `docuprocess-dev-app:8000` → ambos targets **healthy** (`/api/health`).
 - `aws cloudwatch describe-alarms` → las 4 alarmas en estado **OK** con 1 acción hacia el SNS `docuprocess-dev-alerts`:
   `docuprocess-dev-ec2-cpu-high`, `docuprocess-dev-rds-cpu-high`, `docuprocess-dev-rds-connections-high`, `docuprocess-dev-rds-free-storage-low`.
-- `aws sns list-topics` → `arn:aws:sns:us-east-1:491699813584:docuprocess-dev-alerts`; suscripción `ingesoftv@gmail.com` = **confirmada por el usuario** (el 13-nov) — las alertas ya se entregan.
+- `aws sns list-topics` → `arn:aws:sns:us-east-1:<AWS_ACCOUNT_ID>:docuprocess-dev-alerts`; suscripción `<TEAM_EMAIL>` = **confirmada por el usuario** (el 13-nov) — las alertas ya se entregan.
 - `aws dynamodb list-tables` → `documents`, `document_events`.
 - Vía CloudFront: `GET /api/health` → 200 y `GET /api/ready` → 200.
 - `aws cloudtrail` sin trails (modo `event-history` por defecto): `verify-cloudtrail.sh` documenta el historial de 90 días; el Sandbox deniega `cloudtrail:CreateTrail`.
@@ -76,7 +76,7 @@ En algunas sesiones del laboratorio las APIs de lectura (`Describe*`, `GetMetric
 
 - **Código**: implementado, cableado y en `main` (PR #51). ✅
 - **Verificación viva**: **obtenida y repetida** — mañana: alarmas con acción `Successfully executed action … docuprocess-dev-alerts` y `LookupEvents` con eventos; tarde: 4 alarmas `OK` con 1 acción SNS, ASG 2/2 → 4/4 bajo carga, TG healthy, health/ready 200, tablas activas. ✅
-- **SNS**: suscripción `ingesoftv@gmail.com` **confirmada** por el usuario el 13-nov — las alertas ya se entregan. ✅
+- **SNS**: suscripción `<TEAM_EMAIL>` **confirmada** por el usuario el 13-nov — las alertas ya se entregan. ✅
 - **Trazabilidad**: filas 9 y 10 actualizadas a `Verificado` con la fecha 2026-11-13. ✅
 - **Opcional para la defensa**: demo de alarma en estado `ALARM` (bajar umbral de `docuprocess-dev-ec2-cpu-high` a 1 %, esperar 2 períodos, restaurar) o capturas de la consola; enlazarlas aquí con IDs redactados.
 

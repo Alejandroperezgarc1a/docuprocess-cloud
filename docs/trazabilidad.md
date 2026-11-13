@@ -17,15 +17,15 @@
 
 | # | Requisito | Evidencia | Estado | Última verificación | Riesgo / nota |
 | --- | --- | --- | --- | --- | --- |
-| 1 | VPC con subredes públicas (ALB) y privadas (app + datos) | `infra/modules/network/`; apply en cuenta 491699813584 OK | Verificado | 2026-11-13 | Aplicado desde estado vacío (apply3) |
+| 1 | VPC con subredes públicas (ALB) y privadas (app + datos) | `infra/modules/network/`; apply en cuenta <AWS_ACCOUNT_ID> OK | Verificado | 2026-11-13 | Aplicado desde estado vacío (apply3) |
 | 2 | ALB + ASG 2–4, `t3.micro` | apply OK: 2 instancias InService/Healthy; drill terminación → reemplazo ASG; 2/2 healthy; A8: escalado real 2→4 bajo carga (CPU 98-99 %) | Verificado | 2026-11-13 | Escaló a 4 tras la prueba de carga (CPU objetivo 60 %); scale-in automático a 2 en ~15 min |
 | 3 | API y worker en las mismas instancias | `docuprocess-api` y `docuprocess-worker` `active` en AMBAS instancias vía SSM (2026-11-13) | Verificado | 2026-11-13 | — |
 | 4 | SSM Session Manager, sin SSH ni bastión | `/etc/docuprocess.env` real completo en ambas instancias vía send-command; API/worker active | Verificado | 2026-11-13 | Rol preexistente (AmazonSSMRoleForInstancesQuickSetup) |
-| 5 | RDS MySQL Single-AZ `db.t3.micro` para cuentas y autenticación | apply OK: docuprocess-dev-mysql db.t3.micro disponible (endpoint c9pldrtatyja) | Verificado | 2026-11-13 | — |
-| 6 | S3 para archivos | apply OK: buckets docuprocess-dev-{docs,frontend,artifacts}-47cb5959 con PAB/SSE/versioning/CORS/OAC; subida PUT prefirmada OK (3/3) | Verificado | 2026-11-13 | — |
+| 5 | RDS MySQL Single-AZ `db.t3.micro` para cuentas y autenticación | apply OK: docuprocess-dev-mysql db.t3.micro disponible (endpoint <RDS_ENDPOINT_ID>) | Verificado | 2026-11-13 | — |
+| 6 | S3 para archivos | apply OK: buckets docuprocess-dev-{docs,frontend,artifacts}-<BUCKET_SUFFIX> con PAB/SSE/versioning/CORS/OAC; subida PUT prefirmada OK (3/3) | Verificado | 2026-11-13 | — |
 | 7 | DynamoDB para metadatos, historial y resultados | apply OK: tablas ACTIVE; document_events: PENDING→PROCESSING→DONE sin duplicados (3/3 docs) | Verificado | 2026-11-13 | — |
-| 8 | SNS para notificaciones | apply OK: topic docuprocess-dev-alerts + suscripción email ingesoftv@gmail.com confirmada; worker `sns_published` (DONE) y CloudWatch `Delivered=3`, `Failed=0` | Verificado | 2026-11-13 | Terraform no puede confirmar la suscripción: la confirmación del buzón es manual (una vez) |
-| 9 | CloudWatch: alarmas de CPU de EC2 y métricas de RDS | Verificación viva 2026-11-13 (sesión de entrega): las 4 alarmas (`docuprocess-dev-ec2-cpu-high`, `rds-cpu-high`, `rds-connections-high`, `rds-free-storage-low`) en estado `OK` con 1 acción hacia el SNS `docuprocess-dev-alerts` (suscripción `ingesoftv@gmail.com` confirmada); ASG `docuprocess-dev-app-v1` 2/2 InService antes de la prueba de carga (4/4 durante A8); TG `docuprocess-dev-app` 2/2 healthy; ver `docs/informe-b10.md` | Verificado | 2026-11-13 | durante la prueba de carga A8 el ASG escaló 2→4 (ver fila 19) |
+| 8 | SNS para notificaciones | apply OK: topic docuprocess-dev-alerts + suscripción email `<TEAM_EMAIL>` confirmada; worker `sns_published` (DONE) y CloudWatch `Delivered=3`, `Failed=0` | Verificado | 2026-11-13 | Terraform no puede confirmar la suscripción: la confirmación del buzón es manual (una vez) |
+| 9 | CloudWatch: alarmas de CPU de EC2 y métricas de RDS | Verificación viva 2026-11-13 (sesión de entrega): las 4 alarmas (`docuprocess-dev-ec2-cpu-high`, `rds-cpu-high`, `rds-connections-high`, `rds-free-storage-low`) en estado `OK` con 1 acción hacia el SNS `docuprocess-dev-alerts` (suscripción `<TEAM_EMAIL>` confirmada); ASG `docuprocess-dev-app-v1` 2/2 InService antes de la prueba de carga (4/4 durante A8); TG `docuprocess-dev-app` 2/2 healthy; ver `docs/informe-b10.md` | Verificado | 2026-11-13 | durante la prueba de carga A8 el ASG escaló 2→4 (ver fila 19) |
 | 10 | CloudTrail para auditoría | Verificación viva 2026-11-13: `cloudtrail` sin trails; modo `event-history` (90 días, `verify-cloudtrail.sh`) OK; `describe-trails` permitió confirmar que no hay trail; ver `docs/informe-b10.md` | Verificado | 2026-11-13 | Sandbox deniega `cloudtrail:CreateTrail`; sin trail persistente (documentado en informe-b10) |
 | 11 | IaC modular (Terraform) | apply desde estado vacío OK: Plan 68 to add, 68/68, APPLY3_EXIT=0; módulos network/storage/dynamodb/rds/compute/sns/cdn + monitoring (PR #51) | Verificado | 2026-11-13 | — |
 | 12 | Sin `CreateRole`/`GetRole`; solo roles preexistentes | `data.aws_iam_instance_profiles` + políticas basadas en recursos | Verificado | 2026-11-11 | — |
@@ -55,29 +55,29 @@
 | `npm run typecheck`, `npm run build`, `npm test` | 68 pruebas en verde | Verificado | 2026-11-12 |
 | ShellCheck del userData | `shellcheck` sobre las dos variantes renderizadas (provisional y con artefacto) | Verificado | 2026-11-11 |
 
-## 4. Despliegue C3 (2026-11-13, cuenta 491699813584)
+## 4. Despliegue C3 (2026-11-13, cuenta `<AWS_ACCOUNT_ID>`)
 
 Rama `feat/C3-integracion-e2e-una-sola-cuenta`; PR #50 (Closes #16). Aplicado, probado y documentado en una sola cuenta Sandbox (con el perfil de credenciales del laboratorio):
 
-- Apply desde estado vacío (`terraform init` + `plan -out=tfplan3.bin` → `68 to add, 0 change, 0 destroy`; `APPLY3_EXIT=0`): red (VPC vpc-0140c57f0081acafc, IGW, RTBs, 4 subnets, SGs, endpoints), S3 `docuprocess-dev-{artifacts,docs,frontend}-47cb5959` (PAB, SSE, versionado, CORS docs, política OAC frontend), RDS `docuprocess-dev-mysql` (db.t3.micro, single-AZ, `available`), DynamoDB `documents`/`document_events`, SNS `docuprocess-dev-alerts` + suscripción email a ingesoftv@gmail.com (confirmada; Terraform no puede confirmar correos de terceros), ALB `docuprocess-dev-alb` → TG `docuprocess-dev-app`, ASG `docuprocess-dev-app-v1` (2× t3.micro), Auth/API + worker en mismas instancias.
-- Frontend de la sesión C3 original: CloudFront `d39ytkzrdg5rpz.cloudfront.net` (OAC → S3 + `/api/*` → ALB). `/` y `/api/health` → 200 (`{"status":"ok"}`). El entorno vigente tras la recreación de B9 usa `d3dsxrvmbdbzfq.cloudfront.net` (ver nota siguiente).
+- Apply desde estado vacío (`terraform init` + `plan -out=tfplan3.bin` → `68 to add, 0 change, 0 destroy`; `APPLY3_EXIT=0`): red (VPC <VPC_ID>, IGW, RTBs, 4 subnets, SGs, endpoints), S3 `docuprocess-dev-{artifacts,docs,frontend}-<BUCKET_SUFFIX>` (PAB, SSE, versionado, CORS docs, política OAC frontend), RDS `docuprocess-dev-mysql` (db.t3.micro, single-AZ, `available`), DynamoDB `documents`/`document_events`, SNS `docuprocess-dev-alerts` + suscripción email a `<TEAM_EMAIL>` (confirmada; Terraform no puede confirmar correos de terceros), ALB `docuprocess-dev-alb` → TG `docuprocess-dev-app`, ASG `docuprocess-dev-app-v1` (2× t3.micro), Auth/API + worker en mismas instancias.
+- Frontend de la sesión C3 original: CloudFront `<CLOUDFRONT_DOMAIN_C3>` (OAC → S3 + `/api/*` → ALB). `/` y `/api/health` → 200 (`{"status":"ok"}`). El entorno vigente tras la recreación de B9 usa `<CLOUDFRONT_DOMAIN>` (ver nota siguiente).
 - E2E desde el navegador: registro/login, PDF DONE (pages=1), PNG DONE (1×1), PDF corrupto FAILED (`unsupported file type`), documentos de un usuario no visibles para otro (404). `document_events`: PENDING→PROCESSING→DONE sin duplicados.
 - Tolerancia a fallo: `terminate-instances` de una instancia → ALB siguió 200 (la instancia restante servía), ASG la reemplazó (5xx transitorios ~1–4 min durante draining/registro, comportamiento esperado), target group quedó 2/2 healthy.
 - ENTREGA: **viernes 13 de noviembre de 2026** (milestone "Entrega 13 nov"). C4 (#23) se cierra el 13 nov en cuenta limpia (entrega final).
 - Pendiente/observaciones para A9: huérfanos sin tag que hicieron fallar la primera verificación de cuenta vacía (apply3 pasó solo tras borrarlos manualmente); tfstate de otra cuenta inconsistente → reset documentado (tfstate `.obsoleto-20261113`, previo `previa-20261112`); SNS exige confirmación manual del buzón (Terraform no puede confirmarla; verificado tras confirmar el correo); CloudFront 504 transitorio con draining; `voc-cancel-cred` a mitad de apply (credenciales voclabs revocadas, relanzar lab + re-plan/apply idempotente); `tfplan*.bin` nunca se commitean.
-- **Recreación para B9 (2026-11-13):** el laboratorio volvió a quedar vacío; al validar B9 se refrescó el estado y se reaplicó el stack (**64 added, 0 changed, 3 destroyed**). IDs vigentes: VPC `vpc-076ffcf575b316a82`, ALB `docuprocess-dev-alb-40967399.us-east-1.elb.amazonaws.com`, CloudFront `d3dsxrvmbdbzfq.cloudfront.net` (distribución `E3GJW49EXZJ2LS`). La evidencia E2E anterior corresponde a la sesión previa de C3; B9 valida la publicación y la invalidación sobre el entorno recreado.
+- **Recreación para B9 (2026-11-13):** el laboratorio volvió a quedar vacío; al validar B9 se refrescó el estado y se reaplicó el stack (**64 added, 0 changed, 3 destroyed**). IDs vigentes: VPC `<VPC_ID_2>`, ALB `<ALB_DNS>`, CloudFront `<CLOUDFRONT_DOMAIN>` (distribución `<CLOUDFRONT_DISTRIBUTION_ID>`). La evidencia E2E anterior corresponde a la sesión previa de C3; B9 valida la publicación y la invalidación sobre el entorno recreado.
 
 ## 5. Criterios de terminado de B9
 
 | Criterio de la HU | Evidencia | Estado | Última verificación |
 | --- | --- | --- | --- |
-| `./scripts/deploy-frontend.sh` termina sin errores e imprime la URL | `AWS_PROFILE=academy ./scripts/deploy-frontend.sh` → exit 0; última línea `https://d3dsxrvmbdbzfq.cloudfront.net/`; invalidación `I84XG4B6TMFJ6QIF442PVQEO2F` `Completed` | Verificado (Sandbox) | 2026-11-13 |
-| Un cambio visible en `index.html` aparece en CloudFront tras la invalidación | Marcador `B9-CHECK-SOURCE-2026-11-13T15:05Z` en el fuente → script → invalidación `I6ZD0LMFTHYWIIDT2AAVL6MS1A` `Completed`; `curl` devuelve el marcador. Restauración `I2T0D148DBN71IL0Z55Y8VUT7D`; marcador ausente | Verificado (Sandbox) | 2026-11-13 |
+| `./scripts/deploy-frontend.sh` termina sin errores e imprime la URL | `AWS_PROFILE=academy ./scripts/deploy-frontend.sh` → exit 0; última línea `https://<CLOUDFRONT_DOMAIN>/`; invalidación `<INVALIDATION_ID>` `Completed` | Verificado (Sandbox) | 2026-11-13 |
+| Un cambio visible en `index.html` aparece en CloudFront tras la invalidación | Marcador `B9-CHECK-SOURCE-2026-11-13T15:05Z` en el fuente → script → invalidación `<INVALIDATION_ID_2>` `Completed`; `curl` devuelve el marcador. Restauración `<INVALIDATION_ID_RESTORE>`; marcador ausente | Verificado (Sandbox) | 2026-11-13 |
 | El bucket no contiene `config.example.js` y sí `config.js` | `config.js` presente (300 bytes); `config.example.js` ausente; cabeceras verificadas con `head-object` | Verificado (Sandbox) | 2026-11-13 |
 | Con credenciales vencidas, el script falla al inicio con un mensaje claro | `InvalidClientTokenId` en `aws sts get-caller-identity`, antes de Terraform/npm/S3 | Verificado (local) | 2026-11-13 |
 | `bash -n`, ShellCheck y build de Vite | `bash -n` y `shellcheck scripts/*.sh` OK; `npm ci` + `npm run build` OK; CI del PR #52 en verde | Verificado (local + CI) | 2026-11-13 |
 
-**Estado:** B9 cerrado. El script se validó con `AWS_PROFILE=academy` (cuenta `491699813584`). El perfil `default` de la máquina apunta a `556880009270` y el script falla de forma segura antes de escribir si la cuenta no coincide con el estado.
+**Estado:** B9 cerrado. El script se validó con `AWS_PROFILE=academy` (cuenta `<AWS_ACCOUNT_ID>`). El perfil `default` de la máquina apunta a `<OTHER_AWS_ACCOUNT_ID>` y el script falla de forma segura antes de escribir si la cuenta no coincide con el estado.
 
 ## 6. Riesgos abiertos
 
@@ -94,7 +94,7 @@ Rama `feat/C3-integracion-e2e-una-sola-cuenta`; PR #50 (Closes #16). Aplicado, p
 ## 7. Cómo reproducir la verificación
 
 ```bash
-# En el Sandbox, usar el perfil del laboratorio (cuenta 491699813584)
+# En el Sandbox, usar el perfil del laboratorio (cuenta `<AWS_ACCOUNT_ID>`)
 export AWS_PROFILE=academy
 
 # Infraestructura
