@@ -1,3 +1,4 @@
+// Tests for transaction conflict detection and retry of the DocuProcess Cloud worker.
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { isTransactionConflict, withConflictRetry } from '../src/aws.js';
@@ -11,12 +12,12 @@ function cancelled(...codes: string[]): Error {
 
 const noSleep = async (): Promise<void> => {};
 
-describe('conflicto de transacciones entre workers', () => {
-  it('reconoce TransactionConflict', () => {
+describe('transaction conflicts between workers', () => {
+  it('recognizes TransactionConflict', () => {
     assert.equal(isTransactionConflict(cancelled('TransactionConflict', 'None')), true);
   });
 
-  it('no confunde un claim perdido (ConditionalCheckFailed) con un conflicto', () => {
+  it('does not confuse a lost claim (ConditionalCheckFailed) with a conflict', () => {
     assert.equal(isTransactionConflict(cancelled('ConditionalCheckFailed', 'None')), false);
     assert.equal(
       isTransactionConflict(cancelled('TransactionConflict', 'ConditionalCheckFailed')),
@@ -24,11 +25,11 @@ describe('conflicto de transacciones entre workers', () => {
     );
   });
 
-  it('no confunde otros errores', () => {
+  it('does not confuse other errors', () => {
     assert.equal(isTransactionConflict(new Error('boom')), false);
   });
 
-  it('reintenta tras un conflicto y devuelve el resultado', async () => {
+  it('retries after a conflict and returns the result', async () => {
     let calls = 0;
     const result = await withConflictRetry(
       async () => {
@@ -46,7 +47,7 @@ describe('conflicto de transacciones entre workers', () => {
     assert.equal(calls, 3);
   });
 
-  it('no reintenta un claim perdido', async () => {
+  it('does not retry a lost claim', async () => {
     let calls = 0;
     await assert.rejects(
       withConflictRetry(
@@ -63,7 +64,7 @@ describe('conflicto de transacciones entre workers', () => {
     assert.equal(calls, 1);
   });
 
-  it('se rinde tras el ultimo intento', async () => {
+  it('gives up after the last attempt', async () => {
     let calls = 0;
     await assert.rejects(
       withConflictRetry(

@@ -1,3 +1,7 @@
+/**
+ * AWS integration layer for the DocuProcess Cloud API: DynamoDB document/event
+ * tables and pre-signed S3 upload URLs.
+ */
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
@@ -11,9 +15,9 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Config } from './config.js';
 import type { DocumentEvent, DocumentItem } from './types.js';
 
-// Los GSI (índices secundarios globales) son consultas preconstruidas: DynamoDB no
-// permite hacer WHERE libre, así que cada patrón de acceso tiene su índice (docs/
-// rds-vs-dynamodb.md). Estos límites evitan respuestas enormes y costos inesperados.
+// GSIs (global secondary indexes) are prebuilt queries: DynamoDB does not allow
+// free-form WHERE, so each access pattern has its index (docs/rds-vs-dynamodb.md).
+// These limits avoid huge responses and unexpected costs.
 const GSI_NAME = 'userId-createdAt';
 const DOCUMENT_LIST_LIMIT = 50;
 const EVENT_LIST_LIMIT = 200;
@@ -53,7 +57,7 @@ export function createAwsService(config: Config): AwsService {
   });
 
   return {
-    /** Lee una clave fija para confirmar que DynamoDB responde (sin crear datos). */
+    /** Reads a fixed key to confirm DynamoDB responds (creates no data). */
     async healthCheck(): Promise<void> {
       await ddb.send(
         new GetCommand({
@@ -83,8 +87,9 @@ export function createAwsService(config: Config): AwsService {
       const eventPut = {
         TableName: config.ddbEventsTable,
         Item: event,
-        // La clave es (documentId, eventAt): la condición protege esa clave exacta, no impide
-        // que el documento tenga otros eventos. El sufijo aleatorio de eventAt evita colisiones.
+        // The key is (documentId, eventAt): the condition protects that exact key only; it
+        // does not stop the document from having other events. The random suffix in eventAt
+        // avoids collisions.
         ConditionExpression: 'attribute_not_exists(eventAt)',
       };
 
@@ -101,7 +106,7 @@ export function createAwsService(config: Config): AwsService {
       await ddb.send(new PutCommand(eventPut));
     },
 
-    /** Devuelve los documentos del usuario, más recientes primero (límite 50). */
+    /** Returns the user's documents, newest first (limit 50). */
     async queryUserDocuments(userId: string): Promise<DocumentItem[]> {
       const output = await ddb.send(
         new QueryCommand({
@@ -110,26 +115,26 @@ export function createAwsService(config: Config): AwsService {
           KeyConditionExpression: '#userId = :userId',
           ExpressionAttributeNames: { '#userId': 'userId' },
           ExpressionAttributeValues: { ':userId': userId },
-          ScanIndexForward: false, // false: del más reciente al más antiguo
+          ScanIndexForward: false, // false: newest first
           Limit: DOCUMENT_LIST_LIMIT,
         }),
       );
       return (output.Items ?? []) as DocumentItem[];
     },
 
-    /** Lee un documento con lectura fuertemente consistente (no una copia del GSI atrasada). */
+    /** Reads one document with strongly consistent read (not a stale GSI copy). */
     async getDocument(documentId: string): Promise<DocumentItem | undefined> {
       const output = await ddb.send(
         new GetCommand({
           TableName: config.ddbTable,
           Key: { documentId },
-          ConsistentRead: true, // el worker y el endpoint de detalle leen el estado vigente, no una réplica
+          ConsistentRead: true, // the worker and the detail endpoint read current state, not a replica
         }),
       );
       return output.Item as DocumentItem | undefined;
     },
 
-    /** Devuelve la bitácora del documento en orden cronológico (ascendente, máx. 200). */
+    /** Returns the document audit trail in chronological order (ascending, max 200). */
     async queryDocumentEvents(documentId: string): Promise<DocumentEvent[]> {
       const output = await ddb.send(
         new QueryCommand({
@@ -137,14 +142,14 @@ export function createAwsService(config: Config): AwsService {
           KeyConditionExpression: '#documentId = :documentId',
           ExpressionAttributeNames: { '#documentId': 'documentId' },
           ExpressionAttributeValues: { ':documentId': documentId },
-          ScanIndexForward: true, // true: del evento más antiguo al más reciente (orden de la bitácora)
+          ScanIndexForward: true, // true: oldest event first (audit log order)
           Limit: EVENT_LIST_LIMIT,
         }),
       );
       return (output.Items ?? []) as DocumentEvent[];
     },
 
-    /** Devuelve una URL firmada (SigV4) válida 900 s para subir directo a S3 desde el navegador. */
+    /** Returns a SigV4 pre-signed URL valid for 900 s to upload straight to S3 from the browser. */
     async presignUpload(key: string, contentType: string): Promise<string> {
       return getSignedUrl(
         s3,
@@ -155,8 +160,8 @@ export function createAwsService(config: Config): AwsService {
         }),
         {
           expiresIn: PRESIGN_EXPIRES_SECONDS,
-          // Solo content-type se firma: el navegador debe enviar exactamente el mismo
-          // Content-Type declarado o S3 rechaza la subida.
+          // Only content-type is signed: the browser must send exactly the same
+          // declared Content-Type or S3 rejects the upload.
           signableHeaders: new Set(['content-type']),
         },
       );

@@ -1,6 +1,10 @@
+/**
+ * Environment-based configuration loading and validation for the DocuProcess
+ * Cloud worker.
+ */
 import { hostname } from 'node:os';
 
-/** Configuracion validada del worker. */
+/** Validated configuration of the worker. */
 export interface WorkerConfig {
   docsBucket: string;
   ddbTable: string;
@@ -52,7 +56,7 @@ function readLogLevel(env: Record<string, string | undefined>): WorkerConfig['lo
   return raw;
 }
 
-/** Carga la configuracion desde el entorno y falla rapido si no es valida. */
+/** Loads the configuration from the environment and fails fast if invalid. */
 export function loadConfig(
   env: Record<string, string | undefined> = process.env,
 ): WorkerConfig {

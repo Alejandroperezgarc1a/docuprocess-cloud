@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Verifica la configuración y la privacidad de los buckets del módulo storage (B2).
-# Uso: scripts/test-storage.sh [docs] [frontend] [artifacts]
-# Sin argumentos lee los outputs de Terraform desde infra/.
+# Verifies the configuration and privacy of the storage module buckets (B2).
+# Usage: scripts/test-storage.sh [docs] [frontend] [artifacts]
+# With no arguments it reads the Terraform outputs from infra/.
 set -euo pipefail
 
-# No se fija AWS_PROFILE: se usa el del llamador o la cadena de credenciales
-# por defecto de AWS.
+# AWS_PROFILE is not fixed: it uses the caller's one or the default
+# AWS credential chain.
 region="${AWS_REGION:-us-east-1}"
 failures=0
 
 fail() { echo "FALLA: $*" >&2; failures=$((failures + 1)); }
 pass() { echo "ok: $*"; }
 
-check_eq() { # descripción, esperado, obtenido
+check_eq() { # description, expected, actual
   if [ "$2" = "$3" ]; then
     pass "$1"
   else
@@ -64,7 +64,7 @@ for bucket in "$docs" "$frontend" "$artifacts"; do
   done
 done
 
-# CORS: solo el bucket de documentos.
+# CORS: documents bucket only.
 cors="$(aws s3api get-bucket-cors --bucket "$docs" --query 'CORSRules[0]' --output json)"
 for method in PUT GET HEAD; do
   if printf '%s' "$cors" | jq -e --arg m "$method" '.AllowedMethods | index($m)' >/dev/null; then
@@ -78,11 +78,11 @@ check_eq "CORS Content-Type" "Content-Type" \
 check_eq "CORS ETag" "ETag" \
   "$(printf '%s' "$cors" | jq -r '.ExposeHeaders[0]')"
 
-# Versionado solo en artefactos.
+# Versioning on artifacts only.
 check_eq "artifacts versionado" "Enabled" \
   "$(aws s3api get-bucket-versioning --bucket "$artifacts" --query 'Status' --output text)"
 
-# Políticas basadas en recursos.
+# Resource-based policies.
 docs_policy="$(aws s3api get-bucket-policy --bucket "$docs" --query Policy --output text)"
 if printf '%s' "$docs_policy" | jq -e '.Statement[0].Action | index("s3:PutObject")' >/dev/null; then
   pass "política docs permite PutObject"
@@ -102,7 +102,7 @@ else
   fail "política artifacts sin GetObject"
 fi
 
-# Privacidad: la URL anónima debe fallar y la prefirmada debe funcionar.
+# Privacy: the anonymous URL must fail and the presigned one must work.
 tmp="$(mktemp)"
 printf 'prueba-storage' > "$tmp"
 key="uploads/test-storage/$(date +%s).txt"

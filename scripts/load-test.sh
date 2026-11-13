@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Prueba de carga (A8): satura la CPU del ASG con logins (bcrypt, costo 12) directo contra el ALB
-# y muestra cada 30 s cómo responde el escalado de A7.
+# Load test (A8): saturates the ASG CPU with logins (bcrypt, cost 12) straight
+# against the ALB and every 30 s shows how the A7 autoscaling responds.
 #
-# Uso: scripts/load-test.sh [URL_BASE] [DURACION_SEG] [CONCURRENCIA]
-#   URL_BASE      por defecto http://<output alb_dns_name>  (el ALB, no CloudFront: no se mide la caché)
-#   DURACION_SEG  por defecto 600 (10 min)
-#   CONCURRENCIA  por defecto 50
-# Variables opcionales: ASG_NAME (por defecto el output asg_name), AWS_REGION (us-east-1),
-#   INTERVALO (30), LOG_DIR (carpeta donde quedan la salida de ab y el seguimiento; por defecto un temporal).
+# Usage: scripts/load-test.sh [URL_BASE] [DURACION_SEG] [CONCURRENCIA]
+#   URL_BASE      defaults to http://<output alb_dns_name>  (the ALB, not CloudFront: the cache is not measured)
+#   DURACION_SEG  defaults to 600 (10 min)
+#   CONCURRENCIA  defaults to 50
+# Optional variables: ASG_NAME (defaults to the asg_name output), AWS_REGION (us-east-1),
+#   INTERVALO (30), LOG_DIR (folder where the ab output and the tracking log land; defaults to a temp dir).
 set -euo pipefail
 
 infra_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../infra" && pwd)"
@@ -40,7 +40,7 @@ body="$log_dir/login.json"
 ab_out="$log_dir/ab.txt"
 seguimiento="$log_dir/asg.txt"
 
-# 1. Usuario de prueba propio (correo único por corrida).
+# 1. Dedicated test user (unique email per run).
 email="carga-$(date +%s)@docuprocess.test"
 password="carga-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 printf '{"email":"%s","password":"%s"}' "$email" "$password" > "$body"
@@ -56,7 +56,7 @@ echo "load-test: $base_url  ASG=$asg_name  ${duracion}s  concurrencia=$concurren
 echo "load-test: usuario $email; salidas en $log_dir"
 
 capacidad() {
-  # shellcheck disable=SC2016  # las comillas invertidas son literales de JMESPath, no de bash
+  # shellcheck disable=SC2016  # the backticks are JMESPath literals, not bash
   aws autoscaling describe-auto-scaling-groups --region "$region" \
     --auto-scaling-group-names "$asg_name" \
     --query 'AutoScalingGroups[0].[DesiredCapacity, length(Instances[?LifecycleState==`InService`]), length(Instances)]' \
@@ -64,8 +64,8 @@ capacidad() {
 }
 
 cpu_promedio() {
-  # Último punto de la CPU promedio del grupo. Sin monitoreo detallado EC2 publica cada 5 min,
-  # así que el valor va atrasado; el target tracking de A7 usa esta misma métrica.
+  # Latest average-CPU datapoint of the group. Without EC2 detailed monitoring EC2
+  # publishes every 5 min, so the value lags; the A7 target tracking uses this same metric.
   aws cloudwatch get-metric-statistics --region "$region" --namespace AWS/EC2 \
     --metric-name CPUUtilization --dimensions "Name=AutoScalingGroupName,Value=$asg_name" \
     --start-time "$(date -u -d '-15 min' +%FT%TZ)" --end-time "$(date -u +%FT%TZ)" \
@@ -94,13 +94,13 @@ terminar() {
 }
 trap terminar INT TERM
 
-# 2. Carga: -t limita por tiempo (el -n alto evita que corte antes), -l acepta respuestas de largo
-#    variable, -s 60 iguala el idle timeout del ALB, -r no aborta ante errores de socket.
+# 2. Load: -t limits by time (the high -n keeps it from stopping early), -l accepts long
+#    variable responses, -s 60 matches the ALB idle timeout, -r does not abort on socket errors.
 ab -t "$duracion" -n 100000000 -c "$concurrencia" -s 60 -l -r \
   -p "$body" -T application/json "$base_url/api/auth/login" > "$ab_out" 2>&1 &
 ab_pid=$!
 
-# 3. Seguimiento del ASG mientras ab corre.
+# 3. ASG tracking while ab runs.
 inicio=$(date +%s)
 while kill -0 "$ab_pid" 2>/dev/null; do
   linea="$(date +%T) +$(( $(date +%s) - inicio ))s  $(capacidad)  $(cpu_promedio)"

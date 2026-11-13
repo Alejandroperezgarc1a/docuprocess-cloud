@@ -1,21 +1,22 @@
+// Tests for SNS notification building of the DocuProcess Cloud worker.
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { buildPayload, buildSubject } from '../src/notify.js';
 import { makeItem } from './helpers/fakes.js';
 
-describe('notificaciones SNS', () => {
-  it('limita el subject a 100 caracteres', () => {
+describe('SNS notifications', () => {
+  it('limits the subject to 100 characters', () => {
     const subject = buildSubject('a'.repeat(200), 'DONE');
     assert.ok(Array.from(subject).length <= 100);
     assert.ok(subject.endsWith('...'));
   });
 
-  it('elimina caracteres de control del subject', () => {
+  it('strips control characters from the subject', () => {
     const subject = buildSubject('archivo\u0000\u0007.pdf', 'FAILED');
     assert.equal(subject, 'DocuProcess: archivo.pdf FAILED');
   });
 
-  it('construye el body exacto para DONE', () => {
+  it('builds the exact body for DONE', () => {
     const payload = buildPayload(makeItem(), 'DONE');
     assert.deepEqual(payload, {
       documentId: 'doc-1',
@@ -25,7 +26,7 @@ describe('notificaciones SNS', () => {
     });
   });
 
-  it('incluye error solo en FAILED', () => {
+  it('includes error only on FAILED', () => {
     const failed = buildPayload(makeItem(), 'FAILED', 'invalid pdf');
     assert.deepEqual(failed, {
       documentId: 'doc-1',

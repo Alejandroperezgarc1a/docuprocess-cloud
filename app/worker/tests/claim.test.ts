@@ -1,3 +1,4 @@
+// Tests for the conditional claim logic of the DocuProcess Cloud worker.
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { isConditionalCheckFailure } from '../src/aws.js';
@@ -9,14 +10,14 @@ import {
   silentLogger,
 } from './helpers/fakes.js';
 
-describe('claim condicional', () => {
-  it('reconoce ConditionalCheckFailedException', () => {
+describe('conditional claim', () => {
+  it('recognizes ConditionalCheckFailedException', () => {
     const error = new Error('condition failed');
     error.name = 'ConditionalCheckFailedException';
     assert.equal(isConditionalCheckFailure(error), true);
   });
 
-  it('reconoce TransactionCanceledException por condicion', () => {
+  it('recognizes TransactionCanceledException by condition', () => {
     const error = Object.assign(new Error('cancelled'), {
       name: 'TransactionCanceledException',
       CancellationReasons: [
@@ -27,11 +28,11 @@ describe('claim condicional', () => {
     assert.equal(isConditionalCheckFailure(error), true);
   });
 
-  it('no confunde otros errores', () => {
+  it('does not confuse other errors', () => {
     assert.equal(isConditionalCheckFailure(new Error('boom')), false);
   });
 
-  it('salta el item si otra instancia gano el claim', async () => {
+  it('skips the item if another instance won the claim', async () => {
     const aws = new FakeAwsService();
     aws.claimResults = [false];
 
@@ -48,7 +49,7 @@ describe('claim condicional', () => {
     assert.equal(aws.published.length, 0);
   });
 
-  it('un segundo worker no vuelve a procesar el mismo item', async () => {
+  it('a second worker does not reprocess the same item', async () => {
     const aws = new FakeAwsService();
     aws.claimResults = [true, false];
     const item = makeItem();

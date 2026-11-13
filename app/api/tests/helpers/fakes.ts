@@ -1,3 +1,7 @@
+/**
+ * Test fakes for the DocuProcess Cloud API: in-memory Db and AwsService
+ * implementations plus helpers that build the app and register/login users.
+ */
 import type { Express } from 'express';
 import assert from 'node:assert/strict';
 import request from 'supertest';
@@ -77,16 +81,16 @@ export class FakeDb implements Db {
   }
 
   async close(): Promise<void> {
-    // nada
+    // nothing
   }
 }
 
-// Fake en memoria de AwsService: imita DynamoDB/S3 sin credenciales ni Docker.
-// La bitácora se acumula en `events`; las pruebas de orden cronológico y de fallo usan
-// `failEventsQuery` para simular un error de DynamoDB contra la tabla document_events.
+// In-memory fake of AwsService: imitates DynamoDB/S3 without credentials or Docker.
+// The audit trail accumulates in `events`; ordering and failure tests use
+// `failEventsQuery` to simulate a DynamoDB error against the document_events table.
 export class FakeAws implements AwsService {
   readonly documents = new Map<string, DocumentItem>();
-  // Array de eventos append-only: createDocument agrega sin eliminar, como la tabla real.
+  // Append-only array of events: createDocument adds without removing, like the real table.
   readonly events: DocumentEvent[] = [];
   failHealth = false;
   failPut = false;
@@ -105,8 +109,8 @@ export class FakeAws implements AwsService {
     if (this.failPut) {
       throw new Error('DynamoDB apagado');
     }
-    // En producción esto va dentro de una transacción DynamoDB; aquí el fake guarda ambos,
-    // como haría el caso exitoso de TransactWriteItems.
+    // In production this goes inside a DynamoDB transaction; here the fake stores both,
+    // like the successful case of TransactWriteItems would.
     this.documents.set(item.documentId, structuredClone(item));
     this.events.push(structuredClone(event));
   }

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Verifica la auditoría de CloudTrail en el Sandbox usando el historial de
-# eventos (90 días). El Sandbox deniega cloudtrail:CreateTrail, pero permite
+# Verifies CloudTrail auditing in the Sandbox using the event history
+# (90 days). The Sandbox denies cloudtrail:CreateTrail, but allows
 # cloudtrail:LookupEvents.
 #
-# Uso: AWS_PROFILE=academy ./scripts/verify-cloudtrail.sh [max_resultados]
+# Usage: AWS_PROFILE=academy ./scripts/verify-cloudtrail.sh [max_resultados]
 set -euo pipefail
 
 if ! command -v aws >/dev/null 2>&1; then

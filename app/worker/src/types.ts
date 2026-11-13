@@ -1,8 +1,8 @@
-/** Contratos compartidos con la API (C1/B3). */
+/** Contracts shared with the API (C1/B3) for the DocuProcess Cloud worker. */
 
 export type DocumentStatus = 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED';
 
-/** Estado actual de un documento en la tabla `documents`. */
+/** Current state of a document in the `documents` table. */
 export interface DocumentItem {
   documentId: string;
   userId: string;
@@ -16,7 +16,7 @@ export interface DocumentItem {
   error?: string;
 }
 
-/** Metadatos extraidos del archivo real. */
+/** Metadata extracted from the real file. */
 export interface DocumentResult {
   sizeBytes: number;
   mimeType: string;
@@ -26,7 +26,7 @@ export interface DocumentResult {
   height?: number;
 }
 
-/** Evento append-only de `document_events` (contrato B3). */
+/** Append-only event of `document_events` (contract B3). */
 export interface DocumentEvent {
   documentId: string;
   eventAt: string;
@@ -42,7 +42,7 @@ export interface DocumentEvent {
   schemaVersion: number;
 }
 
-/** Cuerpo JSON que se publica en SNS. */
+/** JSON body published to SNS. */
 export interface NotificationPayload {
   documentId: string;
   userId: string;

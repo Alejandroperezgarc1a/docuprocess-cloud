@@ -1,3 +1,7 @@
+/**
+ * Per-item processing pipeline for the DocuProcess Cloud worker: claim,
+ * download, metadata extraction, terminal transition and SNS notification.
+ */
 import { mkdtemp, open, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -21,9 +25,9 @@ export interface ProcessDeps {
   aws: AwsService;
   config: WorkerConfig;
   logger: Logger;
-  /** Inyectable en pruebas para controlar la ventana de timeout. */
+  /** Injectable in tests to control the timeout window. */
   now?: () => Date;
-  /** Directorio base para temporales; por defecto os.tmpdir(). */
+  /** Base directory for temp files; defaults to os.tmpdir(). */
   tempRoot?: string;
 }
 
@@ -40,7 +44,7 @@ function ageInMinutes(createdAt: string, now: Date): number {
   return (now.getTime() - created) / 60_000;
 }
 
-/** Hora de cada transicion; no se reutiliza la hora del inicio del item. */
+/** Timestamp of each transition; the item's start time is not reused. */
 function currentIso(deps: ProcessDeps): string {
   return (deps.now?.() ?? new Date()).toISOString();
 }
@@ -117,7 +121,7 @@ async function notify(
       status,
     });
   } catch (publishError) {
-    // La transicion ya quedo persistida; SNS es at-least-once y no se revierte.
+    // The transition is already persisted; SNS is at-least-once and is not reverted.
     deps.logger.error('sns_failed', {
       documentId: item.documentId,
       status,
@@ -158,9 +162,9 @@ async function handleMissingObject(
 }
 
 /**
- * Procesa un item PENDING. Devuelve true si esta instancia lo reclamo y lo
- * llevo a un estado terminal; false si lo salto (aun subiendo, sin archivo o
- * reclamado por otro worker).
+ * Processes a PENDING item. Returns true if this instance claimed it and
+ * brought it to a terminal state; false if it was skipped (still uploading,
+ * no file yet, or claimed by another worker).
  */
 export async function processItem(
   item: DocumentItem,

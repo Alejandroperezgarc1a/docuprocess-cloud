@@ -1,10 +1,14 @@
+/**
+ * OpenAPI tests for the DocuProcess Cloud API: spec served at /api/openapi.json
+ * and Swagger UI served at /api/docs.
+ */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import request from 'supertest';
 import { makeApp } from './helpers/fakes.js';
 
 describe('openapi', () => {
-  it('sirve la especificacion OpenAPI', async () => {
+  it('serves the OpenAPI specification', async () => {
     const { app } = makeApp();
 
     const response = await request(app).get('/api/openapi.json');
@@ -20,7 +24,7 @@ describe('openapi', () => {
     assert.ok(response.body.components.securitySchemes.bearerAuth);
   });
 
-  it('sirve Swagger UI', async () => {
+  it('serves Swagger UI', async () => {
     const { app } = makeApp();
 
     const response = await request(app).get('/api/docs/');
@@ -29,7 +33,7 @@ describe('openapi', () => {
     assert.match(response.text, /swagger-ui/i);
   });
 
-  it('redirige /api/docs a /api/docs/', async () => {
+  it('redirects /api/docs to /api/docs/', async () => {
     const { app } = makeApp();
 
     const response = await request(app).get('/api/docs');

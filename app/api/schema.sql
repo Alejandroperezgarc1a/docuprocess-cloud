@@ -1,5 +1,5 @@
--- Tabla de usuarios de DocuProcess Cloud.
--- La API aplica este archivo al arrancar de forma idempotente.
+-- Users table of DocuProcess Cloud.
+-- The API applies this file at startup, idempotently.
 
 CREATE TABLE IF NOT EXISTS users (
     id INT NOT NULL AUTO_INCREMENT,

@@ -1,3 +1,4 @@
+// Test doubles for the DocuProcess Cloud worker: fake AwsService, config, item and logger factories.
 import { Readable } from 'node:stream';
 import type { AwsService, ObjectHead, ObjectStream } from '../../src/aws.js';
 import type { WorkerConfig } from '../../src/config.js';

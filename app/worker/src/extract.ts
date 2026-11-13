@@ -1,3 +1,7 @@
+/**
+ * Metadata extraction for the DocuProcess Cloud worker: validates the real
+ * file content and computes size, SHA-256 and page/dimension metadata.
+ */
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { open, readFile, stat } from 'node:fs/promises';
@@ -13,7 +17,7 @@ const ALLOWED_MIME = new Set([
   'text/plain',
 ]);
 
-/** Limite defensivo contra imagenes con dimensiones desproporcionadas. */
+/** Defensive limit against images with disproportionate dimensions. */
 const MAX_IMAGE_PIXELS = 50_000_000;
 const HEADER_BYTES = 4100;
 
@@ -79,8 +83,8 @@ async function detectMime(
   if (looksLikeText(header)) {
     return 'text/plain';
   }
-  // Si el cliente declaro texto pero el contenido no es UTF-8 valido, no se
-  // acepta: el worker valida el archivo real, no la cabecera declarada.
+  // If the client declared text but the content is not valid UTF-8, it is not
+  // accepted: the worker validates the real file, not the declared header.
   void declaredContentType;
   throw new UnsupportedFileTypeError();
 }
@@ -94,8 +98,8 @@ async function hashFile(filePath: string): Promise<string> {
 }
 
 /**
- * Extrae metadatos del archivo real. Lanza errores permanentes que el proceso
- * convierte en FAILED con un mensaje estable para el frontend.
+ * Extracts metadata from the real file. Throws permanent errors that the
+ * process turns into FAILED with a stable message for the frontend.
  */
 export async function extractMetadata(
   filePath: string,

@@ -1,3 +1,7 @@
+/**
+ * DocuProcess Cloud API entry point: config validation, cluster workers
+ * (WEB_CONCURRENCY), graceful shutdown and worker restart on failure.
+ */
 import cluster from 'node:cluster';
 import { createApp } from './app.js';
 import { createAwsService } from './aws.js';
@@ -28,8 +32,8 @@ function startWorker(): void {
       `${new Date().toISOString()} INFO docuprocess.api: escuchando en 0.0.0.0:${PORT} (pid ${process.pid})`,
     );
   });
-  server.keepAliveTimeout = 65000; // más que los 60 s del ALB
-  server.headersTimeout = 66000;   // debe ser mayor que keepAliveTimeout
+  server.keepAliveTimeout = 65000; // more than the ALB's 60 s
+  server.headersTimeout = 66000;   // must be greater than keepAliveTimeout
 
   let shuttingDown = false;
   const shutdown = (signal: string): void => {

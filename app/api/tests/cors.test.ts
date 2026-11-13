@@ -1,3 +1,7 @@
+/**
+ * CORS middleware tests for DocuProcess Cloud: allowed origins, preflight
+ * handling and CORS headers on error responses.
+ */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import request from 'supertest';
@@ -7,7 +11,7 @@ const ALLOWED_ORIGIN = 'http://localhost:5500';
 const DISALLOWED_ORIGIN = 'http://evil.example.com';
 
 describe('cors', () => {
-  it('devuelve CORS para un origen permitido', async () => {
+  it('returns CORS for an allowed origin', async () => {
     const { app } = makeApp();
 
     const response = await request(app)
@@ -19,7 +23,7 @@ describe('cors', () => {
     assert.match(response.headers.vary ?? '', /Origin/);
   });
 
-  it('no devuelve CORS para un origen no permitido', async () => {
+  it('does not return CORS for a disallowed origin', async () => {
     const { app } = makeApp();
 
     const response = await request(app)
@@ -29,7 +33,7 @@ describe('cors', () => {
     assert.equal(response.headers['access-control-allow-origin'], undefined);
   });
 
-  it('responde el preflight de documentos', async () => {
+  it('answers the documents preflight request', async () => {
     const { app } = makeApp();
 
     const response = await request(app)
@@ -50,7 +54,7 @@ describe('cors', () => {
     );
   });
 
-  it('el 401 tambien lleva CORS', async () => {
+  it('the 401 response also carries CORS', async () => {
     const { app } = makeApp();
 
     const response = await request(app)
@@ -61,7 +65,7 @@ describe('cors', () => {
     assert.equal(response.headers['access-control-allow-origin'], ALLOWED_ORIGIN);
   });
 
-  it('un usuario autenticado recibe CORS', async () => {
+  it('an authenticated user receives CORS', async () => {
     const { app } = makeApp();
     const { headers } = await registerAndLogin(app);
 

@@ -1,3 +1,5 @@
+// DocuProcess Cloud frontend entry point: wires the API client, S3 uploader
+// and UI helpers into the auth, upload queue, document list and detail flows.
 import {
   ApiError,
   SessionExpiredError,
@@ -156,7 +158,7 @@ const theme = createThemeController({
   meta: document.querySelector('meta[name="theme-color"]')
 });
 
-/* Sesión */
+/* Session */
 function readStoredToken() {
   try {
     return sessionStorage.getItem(TOKEN_KEY) || "";
@@ -169,7 +171,7 @@ function saveToken(token) {
   try {
     sessionStorage.setItem(TOKEN_KEY, token);
   } catch (_error) {
-    /* sessionStorage puede estar deshabilitado; la sesión vive en memoria. */
+    /* sessionStorage may be disabled; the session lives in memory. */
   }
 }
 
@@ -177,7 +179,7 @@ function clearStoredToken() {
   try {
     sessionStorage.removeItem(TOKEN_KEY);
   } catch (_error) {
-    /* sin almacenamiento disponible */
+    /* no storage available */
   }
 }
 
@@ -211,7 +213,7 @@ function handleSessionExpired() {
   toast("Tu sesión venció. Inicia sesión de nuevo.", { kind: "error" });
 }
 
-/* Mensajes y vistas */
+/* Messages and views */
 function setMessage(node, text, kind = "error") {
   if (!text) {
     node.hidden = true;
@@ -307,7 +309,7 @@ function setAuthBusy(busy) {
   el.registerForm.setAttribute("aria-busy", String(busy));
 }
 
-/* Autenticación */
+/* Authentication */
 async function handleLogin(event) {
   event.preventDefault();
   if (state.authBusy) return;
@@ -412,7 +414,7 @@ function handleLogout() {
   toast("Sesión cerrada.", { kind: "info" });
 }
 
-/* Contraseñas */
+/* Passwords */
 function bindPasswordToggles() {
   document.querySelectorAll("[data-password-toggle]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -461,7 +463,7 @@ function updatePasswordStrength() {
       : `Fortaleza: ${labels[score]}.`;
 }
 
-/* Archivos y subida */
+/* Files and uploads */
 function getFileType(file) {
   const type = String(file.type || "").toLowerCase();
   if (type === "image/jpg") return "image/jpeg";
@@ -759,7 +761,7 @@ function updateUploadButton() {
   el.uploadSubmit.textContent = navigator.onLine ? "Añadir a la cola" : "Sin conexión";
 }
 
-/* Lista y detalle */
+/* List and detail */
 function isActiveStatus(status) {
   return status === "PENDING" || status === "PROCESSING";
 }
@@ -1108,7 +1110,7 @@ function schedulePoll() {
   }, POLL_MS);
 }
 
-/* Detalle */
+/* Detail */
 function parseDetailHash() {
   const match = window.location.hash.match(/^#\/documents\/([^/]+)$/);
   return match ? decodeURIComponent(match[1]) : null;
@@ -1445,7 +1447,7 @@ function closeDetail({ updateHash = true } = {}) {
   if (updateHash) clearDetailHash();
 }
 
-/* Filtros */
+/* Filters */
 function resetFilters({ render = true } = {}) {
   state.filters = { query: "", status: "all", type: "all", sort: "date-desc" };
   el.searchInput.value = "";
@@ -1460,7 +1462,7 @@ function updateFilterVisibility() {
   el.clearFilters.hidden = !filtersAreActive();
 }
 
-/* Tema y conexión */
+/* Theme and connectivity */
 function handleThemeToggle() {
   const preference = theme.cycle();
   toast(`Tema ${THEME_LABELS[preference]}.`, { kind: "info", duration: 1800 });
@@ -1471,14 +1473,14 @@ function setOnlineState(online) {
   updateUploadButton();
 }
 
-/* Atajos */
+/* Shortcuts */
 function isTypingTarget(target) {
   if (!target) return false;
   const tag = target.tagName;
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
 }
 
-/* Eventos */
+/* Events */
 function bindEvents() {
   el.loginForm.addEventListener("submit", handleLogin);
   el.registerForm.addEventListener("submit", handleRegister);

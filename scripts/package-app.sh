@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Empaqueta la aplicación (A4) en dist/docuprocess-app.zip para que Terraform lo suba a S3.
+# Packages the application (A4) into dist/docuprocess-app.zip for Terraform to upload to S3.
 #
-#   ./scripts/package-app.sh          # desde cualquier carpeta
+#   ./scripts/package-app.sh          # from any folder
 #
-# Por cada componente que exista (app/api, app/worker):
-#   1. npm ci + npm run build en el repo (compila TypeScript a dist/).
-#   2. En una carpeta de preparación copia package.json, package-lock.json, dist/ y schema.sql
-#      e instala SOLO las dependencias de producción (npm ci --omit=dev). Así las instancias
-#      no necesitan internet ni npm: el node_modules viaja dentro del zip.
+# For each component that exists (app/api, app/worker):
+#   1. npm ci + npm run build in the repo (compiles TypeScript to dist/).
+#   2. In a staging folder copies package.json, package-lock.json, dist/ and schema.sql
+#      and installs ONLY production dependencies (npm ci --omit=dev). Instances then
+#      need no internet or npm: node_modules travels inside the zip.
 #
-# El zip es determinista (fechas, permisos y orden fijos): con el mismo código y la misma
-# cadena de herramientas (Node/npm/zip), el hash no cambia y Terraform no reemplaza las instancias.
+# The zip is deterministic (fixed dates, permissions and order): with the same code and
+# the same toolchain (Node/npm/zip) the hash does not change, so Terraform does not replace instances.
 #
-# --ignore-scripts en las dependencias de producción: hoy todo es JavaScript puro. Si el worker (B5)
-# agrega dependencias nativas (sharp, canvas...), hay que quitarlo y compilar para AL2023.
+# --ignore-scripts on production dependencies: today everything is plain JavaScript. If the
+# worker (B5) adds native dependencies (sharp, canvas...), remove it and build for AL2023.
 set -euo pipefail
 umask 022
 
@@ -45,8 +45,8 @@ for comp in "${COMPONENTS[@]}"; do
   found=$((found + 1))
 
   echo "package-app: [$comp] npm ci + build"
-  # --include=dev: TypeScript es devDependency y NODE_ENV=production lo omitiría.
-  # rm -rf dist: que un archivo borrado o renombrado en src/ no quede viejo en el zip.
+  # --include=dev: TypeScript is a devDependency and NODE_ENV=production would omit it.
+  # rm -rf dist: a file deleted or renamed in src/ must not linger in the zip.
   rm -rf "$src/dist"
   (cd "$src" && npm ci --include=dev --no-audit --no-fund && npm run build)
   [[ -d "$src/dist" ]] || die "app/$comp: npm run build no generó dist/."
@@ -60,18 +60,18 @@ for comp in "${COMPONENTS[@]}"; do
   echo "package-app: [$comp] dependencias de producción"
   (cd "$dst" && npm ci --omit=dev --ignore-scripts --no-audit --no-fund)
 
-  # Fuera lo que no se ejecuta en producción.
+  # Out with what does not run in production.
   find "$dst" -type f -name '*.map' -delete
   find "$dst/node_modules" -type d -name .bin -prune -exec rm -rf {} +
-  # Solo definiciones de tipos (.d.ts): mysql2 declara @types/node como dependencia de producción,
-  # pero Node nunca las carga.
+  # Only type definitions (.d.ts): mysql2 declares @types/node as a production
+  # dependency, but Node never loads them.
   rm -rf "$dst/node_modules/@types"
   rm -f "$dst/node_modules/.package-lock.json"
 done
 
 [[ $found -gt 0 ]] || die "no hay ningún componente en app/ (se esperaba app/api y/o app/worker)."
 
-# Zip determinista: misma fecha y permisos en todos los archivos, orden fijo y sin atributos extra (-X).
+# Deterministic zip: same date and permissions on every file, fixed order and no extra attributes (-X).
 find "$STAGE" -type d -exec chmod 755 {} +
 find "$STAGE" -type f -exec chmod 644 {} +
 find "$STAGE" -exec touch -h -d '2026-01-01T00:00:00Z' {} +

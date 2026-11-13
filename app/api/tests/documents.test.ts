@@ -1,3 +1,7 @@
+/**
+ * Document route tests for DocuProcess Cloud: creation with pre-signed URLs,
+ * sanitization, listing, ownership rules, audit trail and failure modes.
+ */
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { describe, it } from 'node:test';
@@ -22,7 +26,7 @@ function createDocument(
 }
 
 describe('documents', () => {
-  it('crea el documento, devuelve la URL y lo guarda PENDING', async () => {
+  it('creates the document, returns the URL and stores it as PENDING', async () => {
     const context = makeApp();
     const { headers, userId } = await registerAndLogin(context.app);
 
@@ -53,7 +57,7 @@ describe('documents', () => {
     assert.equal(item.createdAt, item.updatedAt);
     assert.ok(item.createdAt.endsWith('Z'));
 
-    // La bitacora nace con el evento inicial, escrito en la misma operacion que el documento.
+    // The audit trail starts with the initial event, written in the same operation as the document.
     const events = context.aws.events.filter(
       (event) => event.documentId === documentId,
     );
@@ -70,7 +74,7 @@ describe('documents', () => {
     assert.equal(initial.schemaVersion, 1);
   });
 
-  it('rechaza un tipo no permitido', async () => {
+  it('rejects a disallowed type', async () => {
     const context = makeApp();
     const { headers } = await registerAndLogin(context.app);
 
@@ -82,7 +86,7 @@ describe('documents', () => {
     assert.equal(response.body.error, 'invalid_file_type');
   });
 
-  it('rechaza tamanos invalidos', async () => {
+  it('rejects invalid sizes', async () => {
     const context = makeApp();
     const { headers } = await registerAndLogin(context.app);
 
@@ -99,7 +103,7 @@ describe('documents', () => {
     }
   });
 
-  it('acepta el tamano maximo', async () => {
+  it('accepts the maximum size', async () => {
     const context = makeApp();
     const { headers } = await registerAndLogin(context.app);
 
@@ -110,7 +114,7 @@ describe('documents', () => {
     assert.equal(response.status, 201);
   });
 
-  it('sanea el nombre del archivo', async () => {
+  it('sanitizes the filename', async () => {
     const context = makeApp();
     const { headers } = await registerAndLogin(context.app);
 
@@ -140,7 +144,7 @@ describe('documents', () => {
     assert.equal(empty.body.error, 'invalid_filename');
   });
 
-  it('rechaza campos faltantes', async () => {
+  it('rejects missing fields', async () => {
     const context = makeApp();
     const { headers } = await registerAndLogin(context.app);
 
@@ -159,7 +163,7 @@ describe('documents', () => {
     }
   });
 
-  it('acepta todos los tipos permitidos', async () => {
+  it('accepts all allowed types', async () => {
     const context = makeApp();
     const { headers } = await registerAndLogin(context.app);
 
@@ -175,7 +179,7 @@ describe('documents', () => {
     }
   });
 
-  it('lista solo los documentos del usuario', async () => {
+  it('lists only the user\'s documents', async () => {
     const context = makeApp();
     const userA = await registerAndLogin(context.app, 'a@example.com');
     const userB = await registerAndLogin(context.app, 'b@example.com');
@@ -206,7 +210,7 @@ describe('documents', () => {
     );
   });
 
-  it('ordena descendente y limita a 50', async () => {
+  it('sorts descending and limits to 50', async () => {
     const context = makeApp();
     const { headers, userId } = await registerAndLogin(context.app);
 
@@ -236,7 +240,7 @@ describe('documents', () => {
     assert.equal(items.at(-1)?.createdAt, '2026-01-01T00:00:05.000Z');
   });
 
-  it('devuelve el detalle propio y 404 para el ajeno o inexistente', async () => {
+  it('returns own detail and 404 for another user\'s or a missing document', async () => {
     const context = makeApp();
     const userA = await registerAndLogin(context.app, 'a@example.com');
     const userB = await registerAndLogin(context.app, 'b@example.com');
@@ -267,7 +271,7 @@ describe('documents', () => {
     }
   });
 
-  it('serializa el result numerico del worker', async () => {
+  it('serializes the numeric result from the worker', async () => {
     const context = makeApp();
     const { headers, userId } = await registerAndLogin(context.app);
     const created = await createDocument(context, headers);
@@ -305,7 +309,7 @@ describe('documents', () => {
     });
   });
 
-  it('devuelve 503 si DynamoDB falla al crear', async () => {
+  it('returns 503 when DynamoDB fails on create', async () => {
     const context = makeApp();
     const { headers } = await registerAndLogin(context.app);
     context.aws.failPut = true;
@@ -316,7 +320,7 @@ describe('documents', () => {
     assert.equal(response.body.error, 'storage_unavailable');
   });
 
-  it('devuelve 503 si S3 falla al firmar', async () => {
+  it('returns 503 when S3 fails to sign', async () => {
     const context = makeApp();
     const { headers } = await registerAndLogin(context.app);
     context.aws.failPresign = true;
@@ -327,7 +331,7 @@ describe('documents', () => {
     assert.equal(response.body.error, 'storage_unavailable');
   });
 
-  it('devuelve 503 si falla la lista', async () => {
+  it('returns 503 when the list fails', async () => {
     const context = makeApp();
     const { headers } = await registerAndLogin(context.app);
     context.aws.failQuery = true;
@@ -340,7 +344,7 @@ describe('documents', () => {
     assert.equal(response.body.error, 'storage_unavailable');
   });
 
-  it('devuelve 503 si falla el detalle', async () => {
+  it('returns 503 when the detail fails', async () => {
     const context = makeApp();
     const { headers } = await registerAndLogin(context.app);
     const created = await createDocument(context, headers);
@@ -354,14 +358,14 @@ describe('documents', () => {
     assert.equal(response.body.error, 'storage_unavailable');
   });
 
-  it('devuelve la bitacora en orden ascendente', async () => {
+  it('returns the audit trail in ascending order', async () => {
     const context = makeApp();
     const { headers, userId } = await registerAndLogin(context.app);
     const created = await createDocument(context, headers);
     const documentId = created.body.documentId as string;
 
-    // El evento inicial usa la hora real; los siguientes se calculan a partir de ella para que
-    // el orden sea determinista (no se puede asumir una hora fija).
+    // The initial event uses the real clock; the rest are computed from it so the
+    // order is deterministic (a fixed time cannot be assumed).
     const initialAt = context.aws.events[0]?.eventAt ?? '';
     const at = (offsetMs: number, suffix: string) =>
       `${new Date(new Date(initialAt.slice(0, 24)).getTime() + offsetMs).toISOString()}#${suffix}`;
@@ -401,8 +405,8 @@ describe('documents', () => {
     );
   });
 
-  it('404 en la bitacora de otro usuario, inexistente o mal formada', async () => {
-    // 404 en los tres casos: el API no revela si el documento existe o pertenece a otro.
+  it('404 on another user\'s, missing or malformed audit trail', async () => {
+    // 404 in all three cases: the API doesn't reveal whether the document exists or belongs to someone else.
     const context = makeApp();
     const userA = await registerAndLogin(context.app, 'a@example.com');
     const userB = await registerAndLogin(context.app, 'b@example.com');
@@ -427,7 +431,7 @@ describe('documents', () => {
     }
   });
 
-  it('401 sin token en la bitacora', async () => {
+  it('401 without token on the audit trail', async () => {
     const context = makeApp();
 
     const response = await request(context.app).get(
@@ -437,8 +441,8 @@ describe('documents', () => {
     assert.equal(response.status, 401);
   });
 
-  it('la bitacora solo acepta GET', async () => {
-    // La ruta existe en KNOWN_ROUTES: un metodo no soportado debe dar 405, no 404.
+  it('the audit trail only accepts GET', async () => {
+    // The route exists in KNOWN_ROUTES: an unsupported method must give 405, not 404.
     const context = makeApp();
     const { headers } = await registerAndLogin(context.app);
     const created = await createDocument(context, headers);
@@ -451,8 +455,8 @@ describe('documents', () => {
     assert.equal(response.body.error, 'method_not_allowed');
   });
 
-  it('503 si DynamoDB falla al leer la bitacora', async () => {
-    // 503 (no 500): la API distingue errores de dependencia de errores internos.
+  it('503 when DynamoDB fails reading the audit trail', async () => {
+    // 503 (not 500): the API distinguishes dependency errors from internal errors.
     const context = makeApp();
     const { headers } = await registerAndLogin(context.app);
     const created = await createDocument(context, headers);
@@ -466,7 +470,7 @@ describe('documents', () => {
     assert.equal(response.body.error, 'storage_unavailable');
   });
 
-  it('503 si falla el documento al leer la bitacora', async () => {
+  it('503 when the document read fails while reading the audit trail', async () => {
     const context = makeApp();
     const { headers } = await registerAndLogin(context.app);
     const created = await createDocument(context, headers);
@@ -480,7 +484,7 @@ describe('documents', () => {
     assert.equal(response.body.error, 'storage_unavailable');
   });
 
-  it('devuelve 413 si el cuerpo supera 64 KB', async () => {
+  it('returns 413 when the body exceeds 64 KB', async () => {
     const context = makeApp();
     const { headers } = await registerAndLogin(context.app);
 

@@ -1,3 +1,7 @@
+/**
+ * Auth route tests for the DocuProcess Cloud API: registration, login and
+ * Bearer JWT validation on protected document routes.
+ */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import jwt from 'jsonwebtoken';
@@ -6,7 +10,7 @@ import { verifyPassword } from '../src/auth.js';
 import { makeApp } from './helpers/fakes.js';
 
 describe('auth', () => {
-  it('registra, guarda el hash y devuelve 201', async () => {
+  it('registers, stores the hash and returns 201', async () => {
     const { app, db } = makeApp();
 
     const response = await request(app)
@@ -24,7 +28,7 @@ describe('auth', () => {
     assert.equal(await verifyPassword('password123', user.password_hash), true);
   });
 
-  it('devuelve 409 si el correo ya existe', async () => {
+  it('returns 409 when the email already exists', async () => {
     const { app } = makeApp();
     const payload = { email: 'dup@example.com', password: 'password123' };
 
@@ -36,7 +40,7 @@ describe('auth', () => {
     assert.equal(second.body.error, 'email_exists');
   });
 
-  it('rechaza correo invalido', async () => {
+  it('rejects invalid email', async () => {
     const { app } = makeApp();
 
     const response = await request(app)
@@ -47,7 +51,7 @@ describe('auth', () => {
     assert.equal(response.body.error, 'invalid_email');
   });
 
-  it('rechaza contrasena corta', async () => {
+  it('rejects short password', async () => {
     const { app } = makeApp();
 
     const response = await request(app)
@@ -58,7 +62,7 @@ describe('auth', () => {
     assert.equal(response.body.error, 'weak_password');
   });
 
-  it('rechaza contrasena de mas de 72 bytes', async () => {
+  it('rejects password longer than 72 bytes', async () => {
     const { app } = makeApp();
 
     const response = await request(app)
@@ -69,7 +73,7 @@ describe('auth', () => {
     assert.equal(response.body.error, 'weak_password');
   });
 
-  it('rechaza JSON invalido', async () => {
+  it('rejects invalid JSON', async () => {
     const { app } = makeApp();
 
     const response = await request(app)
@@ -81,7 +85,7 @@ describe('auth', () => {
     assert.equal(response.body.error, 'invalid_request');
   });
 
-  it('rechaza Content-Type que no es JSON', async () => {
+  it('rejects non-JSON Content-Type', async () => {
     const { app } = makeApp();
 
     const response = await request(app)
@@ -93,7 +97,7 @@ describe('auth', () => {
     assert.equal(response.body.error, 'invalid_request');
   });
 
-  it('login correcto devuelve token y claims', async () => {
+  it('successful login returns token and claims', async () => {
     const { app, config } = makeApp();
     await request(app)
       .post('/api/auth/register')
@@ -115,7 +119,7 @@ describe('auth', () => {
     assert.equal(Number(payload.exp) - Number(payload.iat), 3600);
   });
 
-  it('rechaza contrasena incorrecta', async () => {
+  it('rejects wrong password', async () => {
     const { app } = makeApp();
     await request(app)
       .post('/api/auth/register')
@@ -129,7 +133,7 @@ describe('auth', () => {
     assert.equal(response.body.error, 'invalid_credentials');
   });
 
-  it('rechaza usuario inexistente', async () => {
+  it('rejects nonexistent user', async () => {
     const { app } = makeApp();
 
     const response = await request(app)
@@ -140,7 +144,7 @@ describe('auth', () => {
     assert.equal(response.body.error, 'invalid_credentials');
   });
 
-  it('rechaza token ausente', async () => {
+  it('rejects missing token', async () => {
     const { app } = makeApp();
 
     const response = await request(app).get('/api/documents');
@@ -150,7 +154,7 @@ describe('auth', () => {
     assert.equal(response.headers['www-authenticate'], 'Bearer');
   });
 
-  it('rechaza token invalido', async () => {
+  it('rejects invalid token', async () => {
     const { app } = makeApp();
 
     const response = await request(app)
@@ -161,7 +165,7 @@ describe('auth', () => {
     assert.equal(response.body.error, 'unauthorized');
   });
 
-  it('rechaza token con firma incorrecta', async () => {
+  it('rejects token with wrong signature', async () => {
     const { app } = makeApp();
     const now = Math.floor(Date.now() / 1000);
     const token = jwt.sign(
@@ -182,7 +186,7 @@ describe('auth', () => {
     assert.equal(response.status, 401);
   });
 
-  it('rechaza token vencido', async () => {
+  it('rejects expired token', async () => {
     const { app, config } = makeApp();
     const now = Math.floor(Date.now() / 1000);
     const token = jwt.sign(
@@ -204,7 +208,7 @@ describe('auth', () => {
     assert.equal(response.body.error, 'unauthorized');
   });
 
-  it('rechaza token sin sub', async () => {
+  it('rejects token without sub', async () => {
     const { app, config } = makeApp();
     const now = Math.floor(Date.now() / 1000);
     const token = jwt.sign(
@@ -225,7 +229,7 @@ describe('auth', () => {
   });
 
   for (const header of ['', 'Bearer', 'Token abc', 'Bearer   ']) {
-    it(`rechaza header Authorization invalido: "${header}"`, async () => {
+    it(`rejects invalid Authorization header: "${header}"`, async () => {
       const { app } = makeApp();
 
       const response = await request(app)

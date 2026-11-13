@@ -1,3 +1,7 @@
+/**
+ * SNS notification builders for the DocuProcess Cloud worker: subject,
+ * JSON payload and email body.
+ */
 import type {
   DocumentItem,
   DocumentResult,
@@ -7,7 +11,7 @@ import type {
 
 const SNS_SUBJECT_MAX = 100;
 
-/** Elimina caracteres de control que rompen el subject de SNS. */
+/** Removes control characters that break the SNS subject. */
 function stripControls(value: string): string {
   return value.replace(/[\u0000-\u001f\u007f]/g, '');
 }
@@ -21,8 +25,8 @@ function truncate(value: string, max: number): string {
 }
 
 /**
- * Subject de SNS: `DocuProcess: <filename> <status>`.
- * El limite de SNS es 100 caracteres; el filename puede tener 200.
+ * SNS subject: `DocuProcess: <filename> <status>`.
+ * The SNS limit is 100 characters; the filename can be 200.
  */
 export function buildSubject(
   filename: string,
@@ -36,7 +40,7 @@ export function buildSubject(
   return truncate(`DocuProcess: ${documentId ?? 'document'} ${status}`, SNS_SUBJECT_MAX);
 }
 
-/** Cuerpo JSON del contrato de C1. */
+/** JSON body of the C1 contract. */
 export function buildPayload(
   item: DocumentItem,
   status: DocumentStatus,
@@ -51,7 +55,7 @@ export function buildPayload(
   };
 }
 
-/** Plantilla de correo para la suscripción de SNS. */
+/** Email template for the SNS subscription. */
 export function buildEmail(
   item: DocumentItem,
   status: DocumentStatus,
@@ -136,7 +140,7 @@ export function buildEmail(
   return lines.join('\n');
 }
 
-/** Formatea bytes a `1.2 MB` (es-CO, 1 decimal). */
+/** Formats bytes as `1.2 MB` (es-CO locale, 1 decimal). */
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;

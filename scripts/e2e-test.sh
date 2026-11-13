@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Prueba end-to-end del flujo completo contra un despliegue (C3/C4): registro y login de dos usuarios,
-# alta de documentos, subida directa a S3 con la URL prefirmada, procesamiento del worker
-# (PDF y PNG → DONE, PDF falso → FAILED), bitácora y aislamiento entre usuarios.
-# Crea usuarios y documentos de prueba (correos únicos por corrida); no borra nada.
+# End-to-end test of the full flow against a deployment (C3/C4): registration and
+# login of two users, document creation, direct upload to S3 with the presigned URL,
+# worker processing (PDF and PNG -> DONE, fake PDF -> FAILED), event log and
+# isolation between users.
+# Creates test users and documents (unique emails per run); deletes nothing.
 #
-# Uso: ./scripts/e2e-test.sh [URL_BASE]
-#   URL_BASE: p. ej. https://dxxxx.cloudfront.net; por defecto, el output app_url de Terraform.
+# Usage: ./scripts/e2e-test.sh [URL_BASE]
+#   URL_BASE: e.g. https://dxxxx.cloudfront.net; defaults to the Terraform app_url output.
 set -uo pipefail
 
 for cmd in curl python3; do
@@ -28,17 +29,17 @@ mal=0
 
 pass() { echo "  ✅ $1"; ok=$((ok + 1)); }
 fail() { echo "  ❌ $1"; mal=$((mal + 1)); }
-expect() { # descripción obtenido esperado
+expect() { # description actual expected
   if [ "$2" = "$3" ]; then pass "$1 ($2)"; else fail "$1: esperado '$3', obtenido '${2:-vacío}'"; fi
 }
-# Lee un campo del último JSON recibido: field 'token' | field 'items' len
+# Reads a field from the last JSON received: field 'token' | field 'items' len
 field() {
   python3 -c 'import json,sys
 d = json.load(open(sys.argv[1]))
 v = d.get(sys.argv[2], "") if isinstance(d, dict) else ""
 print(len(v) if len(sys.argv) > 3 else v)' "$WORK/out" "$@"
 }
-# call MÉTODO RUTA [TOKEN] [JSON] → imprime el código HTTP; el cuerpo queda en $WORK/out
+# call METHOD PATH [TOKEN] [JSON] -> prints the HTTP code; the body stays in $WORK/out
 call() {
   local args=(-s -o "$WORK/out" -w '%{http_code}' -X "$1" "$BASE$2" -H 'Content-Type: application/json')
   [ -n "${3:-}" ] && args+=(-H "Authorization: Bearer $3")
@@ -59,7 +60,7 @@ expect "login B" "$(call POST /api/auth/login "" "{\"email\":\"$USER_B\",\"passw
 TOKEN_B="$(field token)"
 expect "contraseña incorrecta" "$(call POST /api/auth/login "" "{\"email\":\"$USER_A\",\"password\":\"mala-$RUN\"}")" "401"
 
-# PDF real de 1 página, PNG de 3x2 y un "PDF" falso (bytes arbitrarios) que el worker debe rechazar.
+# Real 1-page PDF, 3x2 PNG and a fake "PDF" (arbitrary bytes) that the worker must reject.
 python3 - "$WORK" <<'EOF'
 import struct, sys, zlib
 w = sys.argv[1]

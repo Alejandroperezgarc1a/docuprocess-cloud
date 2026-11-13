@@ -1,3 +1,5 @@
+// DocuProcess Cloud frontend API client: fetch wrapper with token handling,
+// JWT helpers and user-facing error messages for the backend API.
 export class ApiError extends Error {
   constructor(message, code, status) {
     super(message);

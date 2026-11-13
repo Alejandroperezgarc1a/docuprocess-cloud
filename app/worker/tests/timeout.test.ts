@@ -1,3 +1,4 @@
+// Tests for the upload timeout handling of the DocuProcess Cloud worker.
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { processItem } from '../src/process.js';
@@ -10,8 +11,8 @@ import {
 
 const NOW = new Date('2026-11-11T12:00:00.000Z');
 
-describe('timeout de subida', () => {
-  it('marca FAILED upload timeout cuando el PENDING supera 15 minutos', async () => {
+describe('upload timeout', () => {
+  it('marks FAILED upload timeout when PENDING exceeds 15 minutes', async () => {
     const aws = new FakeAwsService();
     aws.head = { exists: false, reason: 'not_found' };
     const item = makeItem({ createdAt: '2026-11-11T11:40:00.000Z' });
@@ -33,7 +34,7 @@ describe('timeout de subida', () => {
     assert.equal(aws.getObjectStreamCalls, 0);
   });
 
-  it('salta el item si aun esta dentro de la ventana de subida', async () => {
+  it('skips the item if it is still within the upload window', async () => {
     const aws = new FakeAwsService();
     aws.head = { exists: false, reason: 'forbidden' };
     const item = makeItem({ createdAt: '2026-11-11T11:55:00.000Z' });
@@ -50,7 +51,7 @@ describe('timeout de subida', () => {
     assert.equal(aws.published.length, 0);
   });
 
-  it('no publica si otro worker ya cerro el timeout', async () => {
+  it('does not publish if another worker already closed the timeout', async () => {
     const aws = new FakeAwsService();
     aws.head = { exists: false, reason: 'not_found' };
     aws.failPendingResult = false;
@@ -68,7 +69,7 @@ describe('timeout de subida', () => {
     assert.equal(aws.published.length, 0);
   });
 
-  it('marca FAILED si HeadObject reporta un archivo demasiado grande', async () => {
+  it('marks FAILED if HeadObject reports an oversized file', async () => {
     const aws = new FakeAwsService();
     aws.head = { exists: true, sizeBytes: 20 };
     const item = makeItem();

@@ -1,3 +1,4 @@
+// Tests for environment configuration loading of the DocuProcess Cloud worker.
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { ConfigError, loadConfig } from '../src/config.js';
@@ -10,7 +11,7 @@ const BASE = {
 };
 
 describe('config', () => {
-  it('aplica defaults y calcula MAX_FILE_MB en bytes', () => {
+  it('applies defaults and computes MAX_FILE_MB in bytes', () => {
     const config = loadConfig({ ...BASE, MAX_FILE_MB: '2' });
 
     assert.equal(config.pollSeconds, 5);
@@ -22,7 +23,7 @@ describe('config', () => {
     assert.equal(config.ddbEndpointUrl, undefined);
   });
 
-  it('falla si falta una variable obligatoria', () => {
+  it('fails if a required variable is missing', () => {
     const env = { ...BASE };
     delete (env as Partial<typeof BASE>).DDB_EVENTS_TABLE;
 
@@ -34,7 +35,7 @@ describe('config', () => {
     );
   });
 
-  it('rechaza numeros invalidos', () => {
+  it('rejects invalid numbers', () => {
     assert.throws(
       () => loadConfig({ ...BASE, WORKER_POLL_SECONDS: '0' }),
       ConfigError,
@@ -45,14 +46,14 @@ describe('config', () => {
     );
   });
 
-  it('rechaza DDB_TRANSACTIONS invalido', () => {
+  it('rejects invalid DDB_TRANSACTIONS', () => {
     assert.throws(
       () => loadConfig({ ...BASE, DDB_TRANSACTIONS: 'maybe' }),
       ConfigError,
     );
   });
 
-  it('acepta endpoint local y desactiva transacciones', () => {
+  it('accepts local endpoint and disables transactions', () => {
     const config = loadConfig({
       ...BASE,
       DDB_ENDPOINT_URL: 'http://localhost:8001',

@@ -1,3 +1,7 @@
+/**
+ * JSON body parsing and validation helpers for the DocuProcess Cloud API
+ * (Content-Type checks, 400 responses for malformed payloads).
+ */
 import type { Request, Response } from 'express';
 import { errorResponse } from './errors.js';
 

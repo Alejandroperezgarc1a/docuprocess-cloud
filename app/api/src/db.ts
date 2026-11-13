@@ -1,3 +1,7 @@
+/**
+ * MySQL persistence layer for the DocuProcess Cloud API (mysql2 pool,
+ * schema.sql auto-applied) backing the authentication flow.
+ */
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import mysql, {

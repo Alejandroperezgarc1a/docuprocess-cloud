@@ -1,3 +1,4 @@
+// Tests for metadata extraction of the DocuProcess Cloud worker.
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -28,7 +29,7 @@ async function withTemp<T>(
 }
 
 describe('extractMetadata', () => {
-  it('extrae paginas, tamano y sha256 de un PDF', async () => {
+  it('extracts pages, size and sha256 from a PDF', async () => {
     await withTemp(async (dir) => {
       const pdf = await PDFDocument.create();
       pdf.addPage([200, 300]);
@@ -46,7 +47,7 @@ describe('extractMetadata', () => {
     });
   });
 
-  it('extrae dimensiones de un PNG real', async () => {
+  it('extracts dimensions from a real PNG', async () => {
     await withTemp(async (dir) => {
       const path = join(dir, 'sample.png');
       await writeFile(path, PNG_1X1);
@@ -60,7 +61,7 @@ describe('extractMetadata', () => {
     });
   });
 
-  it('detecta texto plano aunque file-type no lo reconozca', async () => {
+  it('detects plain text even if file-type does not recognize it', async () => {
     await withTemp(async (dir) => {
       const content = Buffer.from('hola mundo\n', 'utf8');
       const path = join(dir, 'sample.txt');
@@ -75,7 +76,7 @@ describe('extractMetadata', () => {
     });
   });
 
-  it('rechaza un tipo no permitido', async () => {
+  it('rejects a disallowed type', async () => {
     await withTemp(async (dir) => {
       const path = join(dir, 'archive.zip');
       await writeFile(
@@ -90,7 +91,7 @@ describe('extractMetadata', () => {
     });
   });
 
-  it('rechaza un archivo mayor al limite', async () => {
+  it('rejects a file larger than the limit', async () => {
     await withTemp(async (dir) => {
       const path = join(dir, 'big.txt');
       await writeFile(path, Buffer.from('123456'));
@@ -102,7 +103,7 @@ describe('extractMetadata', () => {
     });
   });
 
-  it('rechaza un PDF corrupto sin romper el proceso', async () => {
+  it('rejects a corrupt PDF without breaking the process', async () => {
     await withTemp(async (dir) => {
       const path = join(dir, 'broken.pdf');
       await writeFile(path, Buffer.from('%PDF-1.4\nesto no es un pdf'));
@@ -115,7 +116,7 @@ describe('extractMetadata', () => {
     });
   });
 
-  it('rechaza un archivo vacio', async () => {
+  it('rejects an empty file', async () => {
     await withTemp(async (dir) => {
       const path = join(dir, 'empty.txt');
       await writeFile(path, Buffer.alloc(0));

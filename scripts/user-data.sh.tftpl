@@ -1,13 +1,13 @@
 #!/bin/bash
-# userData de las instancias de la app (A4). Plantilla de Terraform: lo que va entre $${...} y las
-# directivas %%{ if } las resuelve templatefile() en la raíz; las variables de bash van SIN llaves
-# para que Terraform no las interprete.
+# userData for the app instances (A4). Terraform template: what sits between $${...} and the
+# %%{ if } directives is resolved by templatefile() at the root; bash variables go WITHOUT braces
+# so Terraform does not interpret them.
 #
-# Con artefacto y bucket de documentos: 1) /etc/docuprocess.env con la configuración (los secretos
-# se leen de Parameter Store, no viajan aquí); 2) Node.js 24 desde los repositorios de AL2023
-# (llegan por el gateway endpoint de S3, sin internet); 3) artefacto versionado desde S3;
-# 4) servicios systemd; 5) espera a que la API llegue a MySQL (/api/ready).
-# Sin ellos (B2 sin fusionar) levanta el servidor provisional de A3.
+# With artifact and document bucket: 1) /etc/docuprocess.env with the configuration (secrets are
+# read from Parameter Store, they never travel here); 2) Node.js 24 from the AL2023 repositories
+# (reached via the S3 gateway endpoint, no internet); 3) versioned artifact from S3;
+# 4) systemd services; 5) waits for the API to reach MySQL (/api/ready).
+# Without them (B2 not merged) it brings up the A3 provisional server.
 set -euo pipefail
 exec > >(tee -a /var/log/docuprocess-userdata.log) 2>&1
 echo "$(date -Is) userData: inicio"
@@ -15,13 +15,13 @@ echo "$(date -Is) userData: inicio"
 APP_DIR=/opt/docuprocess
 
 %{ if artifact_key != "" && docs_bucket != "" ~}
-# Versiones de los secretos en Parameter Store: db_password v${db_password_version}, jwt_secret v${jwt_secret_version}.
-# Si un secreto cambia, cambia su versión, cambia este texto y sale una versión nueva del launch
-# template: las instancias se reemplazan y leen el valor nuevo (rotación sin pasos manuales).
+# Secret versions in Parameter Store: db_password v${db_password_version}, jwt_secret v${jwt_secret_version}.
+# If a secret changes, its version changes, change this text and a new launch
+# template version comes out: instances are replaced and read the new value (rotation with no manual steps).
 REGION="${aws_region}"
 ENV_FILE=/etc/docuprocess.env
 
-# Reintenta un comando (los endpoints de la VPC pueden tardar unos segundos al arrancar).
+# Retries a command (VPC endpoints can take a few seconds to start).
 retry() {
   local n=1 max=10
   until "$@"; do
@@ -35,17 +35,17 @@ retry() {
   done
 }
 
-# Lee un SecureString de Parameter Store (por el interface endpoint de SSM; descifra SSM con aws/ssm).
+# Reads a SecureString from Parameter Store (via the SSM interface endpoint; SSM decryption with aws/ssm).
 get_secret() {
   retry aws ssm get-parameter --region "$REGION" --name "$1" --with-decryption \
     --query Parameter.Value --output text
 }
 
-# Escapa un valor para EnvironmentFile de systemd entre comillas dobles. Terraform ya valida que
-# los secretos sean ASCII imprimible sin espacios (sin saltos de línea que rompan el archivo).
+# Escapes a value for systemd EnvironmentFile between double quotes. Terraform already validates that
+# the secrets are printable ASCII without spaces (no line breaks that would break the file).
 quote() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"; }
 
-# --- 1. Configuración (contrato de docs/architecture.md, sección 3)
+# --- 1. Configuration (docs/architecture.md contract, section 3)
 DB_PASSWORD="$(get_secret "${db_password_param}")"
 JWT_SECRET="$(get_secret "${jwt_secret_param}")"
 
@@ -58,11 +58,11 @@ DB_NAME=${db_name}
 DB_USER=${db_user}
 DB_PASSWORD=$(quote "$DB_PASSWORD")
 JWT_SECRET=$(quote "$JWT_SECRET")
-# DDB_TABLE, DDB_EVENTS_TABLE y DOCS_BUCKET son obligatorias para la API: si falta
-# alguna, el proceso no arranca. DDB_TRANSACTIONS=false es un respaldo
-# (escritura secuencial en vez de una transacción); las transacciones funcionan en el
-# Sandbox —probadas el 11 y el 13 de noviembre—; solo se usa si una política deniega
-# las acciones de ítem de la transacción.
+# DDB_TABLE, DDB_EVENTS_TABLE and DOCS_BUCKET are mandatory for the API: if any
+# is missing the process does not start. DDB_TRANSACTIONS=false is a fallback
+# (sequential writes instead of a transaction); transactions work in the
+# Sandbox —tested on November 11 and 13—; it is only used if a policy denies
+# the transaction item actions.
 DDB_TABLE=${ddb_table}
 DDB_EVENTS_TABLE=${ddb_events_table}
 DDB_TRANSACTIONS=${ddb_transactions}
@@ -81,12 +81,12 @@ chmod 600 "$ENV_FILE"
 umask 022
 echo "$(date -Is) $ENV_FILE escrito"
 
-# --- 2. Node.js 24 (paquete de AL2023; el repositorio vive en S3 y llega por el gateway endpoint)
+# --- 2. Node.js 24 (AL2023 package; the repository lives in S3 and is reached via the gateway endpoint)
 retry dnf install -y -q nodejs24
 NODE_BIN="$(command -v node)"
 echo "$(date -Is) Node $("$NODE_BIN" --version) en $NODE_BIN"
 
-# --- 3. Artefacto versionado por hash (lo sube Terraform; la bucket policy de B2 da GetObject al rol)
+# --- 3. Hash-versioned artifact (Terraform uploads it; the B2 bucket policy grants GetObject to the role)
 retry aws s3 cp --region "$REGION" --only-show-errors \
   "s3://${artifacts_bucket}/${artifact_key}" /tmp/docuprocess-app.zip
 rm -rf "$APP_DIR"
@@ -96,10 +96,10 @@ rm -f /tmp/docuprocess-app.zip
 echo "${artifact_key}" > "$APP_DIR/RELEASE"
 echo "$(date -Is) artefacto ${artifact_key} en $APP_DIR"
 
-# --- 4. Servicios systemd (corren como usuario sin privilegios; logs a journald)
+# --- 4. systemd services (run as an unprivileged user; logs to journald)
 id docuprocess >/dev/null 2>&1 || useradd --system --no-create-home --shell /sbin/nologin docuprocess
 
-write_unit() { # write_unit <nombre> <descripción> <archivo de entrada> [Environment extra]
+write_unit() { # write_unit <name> <description> <input file> [Environment extra]
   local extra_env=""
   if [ -n "$${4:-}" ]; then extra_env="Environment=$4"; fi
   cat > "/etc/systemd/system/docuprocess-$1.service" <<UNIT
@@ -134,7 +134,7 @@ SERVICES=()
 write_unit api "API REST" dist/server.js "WEB_CONCURRENCY=2 PORT=8000"
 SERVICES+=(docuprocess-api.service)
 if [ -f "$APP_DIR/worker/package.json" ]; then
-  # Entrada del worker (B5): el campo "main" de su package.json o, si no lo define, dist/worker.js.
+  # Worker entry point (B5): the "main" field of its package.json or, if undefined, dist/worker.js.
   WORKER_MAIN="$("$NODE_BIN" -p "require('$APP_DIR/worker/package.json').main || 'dist/worker.js'")"
   write_unit worker "worker de procesamiento" "$WORKER_MAIN"
   SERVICES+=(docuprocess-worker.service)
@@ -144,14 +144,14 @@ fi
 
 systemctl daemon-reload
 
-# --- 5. Readiness ANTES de abrir el puerto 8000: la instancia solo puede quedar sana si la API llega
-# a MySQL con sus credenciales. Se levanta una API temporal en el 8001 (el ALB no la ve) con el mismo
-# usuario y el mismo EnvironmentFile, y se espera GET /api/ready. Solo si responde 200 se arrancan los
-# servicios reales (8000). Si no, nunca se arrancan: el target no pasa a healthy, Terraform no da por
-# creado el ASG nuevo y el anterior sigue atendiendo. El ALB usa /api/health (superficial) para que
-# una caída de RDS en producción no recicle todas las instancias.
-# Plazo: 180 s (dentro de los 300 s de gracia del ASG). Cada intento espera hasta 15 s porque un
-# MySQL inalcanzable tarda ~10 s en dar ETIMEDOUT.
+# --- 5. Readiness BEFORE opening port 8000: the instance can only end up healthy if the API reaches
+# MySQL with its credentials. A temporary API is raised on 8001 (the ALB cannot see it) with the same
+# user and the same EnvironmentFile, and GET /api/ready is awaited. Only if it returns 200 do the real
+# services start (8000). Otherwise they never start: the target never turns healthy, Terraform does not
+# mark the new ASG as created and the previous one keeps serving. The ALB uses /api/health (superficial)
+# so an RDS outage in production does not recycle every instance.
+# Deadline: 180 s (within the ASG's 300 s grace period). Each attempt waits up to 15 s because an
+# unreachable MySQL takes ~10 s to return ETIMEDOUT.
 systemd-run --unit=docuprocess-readiness --quiet \
   -p User=docuprocess -p EnvironmentFile="$ENV_FILE" -p WorkingDirectory="$APP_DIR/api" \
   -E NODE_ENV=production -E PORT=8001 -E WEB_CONCURRENCY=1 \
@@ -177,8 +177,8 @@ fi
 systemctl enable --now "$${SERVICES[@]}"
 echo "$(date -Is) userData: listo, API lista con MySQL ($${SERVICES[*]})"
 %{ else ~}
-# --- Sin artefacto o sin bucket de documentos (B2 sin fusionar): servidor provisional de A3,
-# 200 en /api/health por el puerto 8000. No lee secretos: no los necesita.
+# --- Without artifact or without document bucket (B2 not merged): A3 provisional server,
+# 200 on /api/health over port 8000. It reads no secrets: it does not need them.
 mkdir -p "$APP_DIR/placeholder/api"
 echo '{"status":"ok","placeholder":true}' > "$APP_DIR/placeholder/api/health"
 

@@ -1,3 +1,7 @@
+/**
+ * Express application factory for the DocuProcess Cloud API: wires middleware,
+ * health/readiness endpoints, auth and document routes, Swagger UI and error handling.
+ */
 import express, {
   type ErrorRequestHandler,
   type Express,

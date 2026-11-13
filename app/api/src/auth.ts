@@ -1,3 +1,7 @@
+/**
+ * Authentication routes and middleware for DocuProcess Cloud: registration,
+ * login (bcrypt + HS256 JWT) and Bearer-token auth for protected routes.
+ */
 import bcrypt from 'bcryptjs';
 import type { Express, RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';

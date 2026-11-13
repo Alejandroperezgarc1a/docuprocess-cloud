@@ -1,3 +1,7 @@
+/**
+ * Config loading tests for DocuProcess Cloud: required env vars, defaults,
+ * DDB_TRANSACTIONS parsing and CORS list handling.
+ */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { loadConfig } from '../src/config.js';
@@ -22,15 +26,15 @@ function envWithout(name: string): Record<string, string> {
 }
 
 describe('config', () => {
-  it('falla si falta una obligatoria', () => {
+  it('fails when a required variable is missing', () => {
     assert.throws(() => loadConfig(envWithout('DB_HOST')), /DB_HOST/);
   });
 
-  it('falla si falta DDB_EVENTS_TABLE', () => {
+  it('fails when DDB_EVENTS_TABLE is missing', () => {
     assert.throws(() => loadConfig(envWithout('DDB_EVENTS_TABLE')), /DDB_EVENTS_TABLE/);
   });
 
-  it('activa transacciones por defecto y acepta false', () => {
+  it('enables transactions by default and accepts false', () => {
     assert.equal(loadConfig(BASE_ENV).ddbTransactions, true);
     assert.equal(
       loadConfig({ ...BASE_ENV, DDB_TRANSACTIONS: 'FALSE' }).ddbTransactions,
@@ -38,34 +42,34 @@ describe('config', () => {
     );
   });
 
-  it('rechaza DDB_TRANSACTIONS invalido', () => {
+  it('rejects invalid DDB_TRANSACTIONS', () => {
     assert.throws(
       () => loadConfig({ ...BASE_ENV, DDB_TRANSACTIONS: 'si' }),
       /DDB_TRANSACTIONS/,
     );
   });
 
-  it('falla si DOCS_BUCKET esta vacio', () => {
+  it('fails when DOCS_BUCKET is empty', () => {
     const env = { ...BASE_ENV, DOCS_BUCKET: '   ' };
     assert.throws(() => loadConfig(env), /DOCS_BUCKET/);
   });
 
-  it('falla si JWT_SECRET es corto', () => {
+  it('fails when JWT_SECRET is too short', () => {
     const env = { ...BASE_ENV, JWT_SECRET: 'corto' };
     assert.throws(() => loadConfig(env), /JWT_SECRET/);
   });
 
-  it('usa DB_PORT 3306 por defecto', () => {
+  it('uses DB_PORT 3306 by default', () => {
     const config = loadConfig(envWithout('DB_PORT'));
     assert.equal(config.dbPort, 3306);
   });
 
-  it('rechaza DB_PORT invalido', () => {
+  it('rejects invalid DB_PORT', () => {
     const env = { ...BASE_ENV, DB_PORT: 'no-es-puerto' };
     assert.throws(() => loadConfig(env), /DB_PORT/);
   });
 
-  it('lee opcionales y CORS', () => {
+  it('reads optional variables and CORS', () => {
     const env = {
       ...BASE_ENV,
       DDB_ENDPOINT_URL: 'http://localhost:8001',
@@ -80,7 +84,7 @@ describe('config', () => {
     ]);
   });
 
-  it('deja DDB_ENDPOINT_URL indefinido si no se define', () => {
+  it('leaves DDB_ENDPOINT_URL undefined when not set', () => {
     const config = loadConfig(envWithout('DDB_ENDPOINT_URL'));
     assert.equal(config.ddbEndpointUrl, undefined);
   });

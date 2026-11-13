@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Publica el frontend (build Vite) en su bucket S3 y refresca CloudFront (B9).
+# Publishes the frontend (Vite build) to its S3 bucket and refreshes CloudFront (B9).
 #
 #   ./scripts/deploy-frontend.sh
 #
-# Requisitos:
-#   - AWS CLI autenticado con la misma cuenta del estado de Terraform.
-#   - Terraform inicializado y con B2 (bucket) y B7 (CloudFront) aplicados.
-#   - Node.js >= 22.12 y npm.
+# Requirements:
+#   - AWS CLI authenticated with the same account as the Terraform state.
+#   - Terraform initialized and with B2 (bucket) and B7 (CloudFront) applied.
+#   - Node.js >= 22.12 and npm.
 #
-# El script no crea infraestructura ni imprime credenciales. Lee los nombres
-# desde los outputs raíz y falla antes de escribir si la cuenta no coincide.
+# The script does not create infrastructure and never prints credentials. It reads
+# the names from the root outputs and fails before writing if the account mismatches.
 set -euo pipefail
 umask 022
 
@@ -31,7 +31,7 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "falta '$1' en el PATH."
 }
 
-# Lee un output raíz de Terraform y falla con un mensaje accionable.
+# Reads a root Terraform output and fails with an actionable message.
 tf_output() {
   local name="$1"
   local value
@@ -50,8 +50,8 @@ tf_output() {
   printf '%s' "$value"
 }
 
-# La región del Sandbox es us-east-1. Si el usuario cambia aws_region en
-# terraform.tfvars, debe exportar AWS_REGION con el mismo valor.
+# The Sandbox region is us-east-1. If the user changes aws_region in
+# terraform.tfvars, they must export AWS_REGION with the same value.
 if [[ -z "${AWS_REGION:-}" && -z "${AWS_DEFAULT_REGION:-}" ]]; then
   AWS_REGION="us-east-1"
   export AWS_REGION
@@ -82,7 +82,7 @@ fi
 [[ -f "$FRONTEND_DIR/config.example.js" ]] || die "no existe frontend/config.example.js."
 [[ -f "$FRONTEND_DIR/scripts/generate-config.mjs" ]] || die "no existe frontend/scripts/generate-config.mjs."
 
-# Comprueba que el estado de Terraform pertenece a la cuenta autenticada.
+# Checks that the Terraform state belongs to the authenticated account.
 STATE_ACCOUNT=""
 if state_account_raw="$(terraform -chdir="$INFRA_DIR" output -no-color -raw account_id 2>/dev/null)"; then
   STATE_ACCOUNT="$state_account_raw"
@@ -129,8 +129,8 @@ if ! npm --prefix "$FRONTEND_DIR" run config; then
   die "no se pudo generar frontend/public/config.js."
 fi
 
-# En producción manda config.js. Evita que un VITE_API_BASE_URL heredado del
-# entorno apunte el build a otro origen.
+# In production config.js wins. Avoids an inherited VITE_API_BASE_URL from
+# the environment pointing the build at another origin.
 unset VITE_API_BASE_URL VITE_API_PROXY_TARGET
 
 log "Construyendo el frontend..."

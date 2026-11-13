@@ -1,3 +1,5 @@
+// DocuProcess Cloud frontend uploader: PUTs files straight to S3 with the
+// presigned URL from the API and maps S3/XML errors to user-facing messages.
 export class UploadError extends Error {
   constructor(message, { status = 0, code = "upload_failed" } = {}) {
     super(message);
@@ -58,7 +60,7 @@ export function uploadToS3({ url, method = "PUT", headers, file, onProgress, sig
         xhr.setRequestHeader(key, value);
       });
     } catch (_error) {
-      /* Algunos headers los controla el navegador; seguimos con el resto. */
+      /* Some headers are controlled by the browser; continue with the rest. */
     }
 
     xhr.upload.onprogress = (event) => {

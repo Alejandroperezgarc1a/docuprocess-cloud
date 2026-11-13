@@ -1,3 +1,7 @@
+/**
+ * AWS service layer for the DocuProcess Cloud worker: DynamoDB status
+ * transitions, S3 object access and SNS notification publishing.
+ */
 import { randomUUID } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { GetObjectCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
@@ -32,7 +36,7 @@ const FAILED = 'FAILED' as const;
 export interface ObjectHead {
   exists: boolean;
   sizeBytes?: number;
-  /** Motivo cuando el objeto no es accesible (not_found o forbidden). */
+  /** Reason when the object is not accessible (not_found or forbidden). */
   reason?: string;
 }
 
@@ -41,7 +45,7 @@ export interface ObjectStream {
   contentLength?: number;
 }
 
-/** Puerta de entrada a AWS; permite inyectar un fake en pruebas. */
+/** Entry point to AWS; allows injecting a fake in tests. */
 export interface AwsService {
   queryPending(limit: number): Promise<DocumentItem[]>;
   headObject(key: string): Promise<ObjectHead>;
@@ -68,7 +72,7 @@ function httpStatusCode(error: unknown): number | undefined {
   return metadata?.httpStatusCode;
 }
 
-/** Un claim perdido o una transicion ya aplicada. */
+/** A lost claim or an already-applied transition. */
 export function isConditionalCheckFailure(error: unknown): boolean {
   const name = errorName(error);
   if (name === 'ConditionalCheckFailedException') {
@@ -85,9 +89,10 @@ export function isConditionalCheckFailure(error: unknown): boolean {
 }
 
 /**
- * Transaccion cancelada por un conflicto transitorio con otra transaccion sobre el mismo item
- * (p. ej., el claim de otro worker en el mismo instante). A diferencia de ConditionalCheckFailed,
- * no significa que otro gano: hay que reintentar. El SDK no la reintenta por su cuenta.
+ * Transaction cancelled by a transient conflict with another transaction on the
+ * same item (e.g., another worker's claim at the same instant). Unlike
+ * ConditionalCheckFailed, it does not mean someone else won: it must be retried.
+ * The SDK does not retry it on its own.
  */
 export function isTransactionConflict(error: unknown): boolean {
   if (errorName(error) !== 'TransactionCanceledException') {
@@ -102,9 +107,10 @@ export function isTransactionConflict(error: unknown): boolean {
 }
 
 /**
- * Ejecuta `operation` y la reintenta con espera creciente mientras falle por TransactionConflict.
- * Las transiciones son condicionales e idempotentes (mismo evento, misma clave), asi que repetirlas
- * es seguro. Cualquier otro error, o el ultimo intento, se propaga.
+ * Runs `operation` and retries it with increasing backoff while it fails with
+ * TransactionConflict. Transitions are conditional and idempotent (same event,
+ * same key), so repeating them is safe. Any other error, or the last attempt,
+ * is propagated.
  */
 export async function withConflictRetry<T>(
   operation: () => Promise<T>,
@@ -125,7 +131,7 @@ export async function withConflictRetry<T>(
   }
 }
 
-/** 403 y 404 significan que el objeto aun no es accesible; el resto se propaga. */
+/** 403 and 404 mean the object is not yet accessible; anything else propagates. */
 export function isObjectUnavailable(error: unknown): boolean {
   const status = httpStatusCode(error);
   if (status === 403 || status === 404) {
@@ -140,7 +146,7 @@ export function isObjectUnavailable(error: unknown): boolean {
   );
 }
 
-/** Construye el evento append-only de una transicion hecha por el worker. */
+/** Builds the append-only event for a transition made by the worker. */
 export function makeEvent(
   item: DocumentItem,
   fromStatus: DocumentStatus,
@@ -162,7 +168,7 @@ export function makeEvent(
   };
 }
 
-/** Expresion de actualizacion terminal, exportada para pruebas. */
+/** Terminal update expression, exported for tests. */
 export function buildTerminalUpdate(status: 'DONE' | 'FAILED'): string {
   return status === DONE
     ? 'SET #s = :done, #r = :result, updatedAt = :now REMOVE #e'
@@ -176,8 +182,8 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * Crea el servicio real de AWS. Los clientes se configuran con reintentos
- * acotados y sin checksums adicionales en S3 (compatible con el resto del API).
+ * Creates the real AWS service. Clients are configured with bounded retries
+ * and no extra checksums in S3 (compatible with the rest of the API).
  */
 export function createAwsService(
   config: WorkerConfig,

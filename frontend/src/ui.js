@@ -1,3 +1,5 @@
+// DocuProcess Cloud frontend UI helpers: theme controller, toasts, date and
+// byte formatting, file type metadata, clipboard copy and debounce.
 const THEME_KEY = "docuprocess.theme";
 const THEME_ORDER = ["system", "light", "dark"];
 const THEME_LABELS = { system: "sistema", light: "claro", dark: "oscuro" };
@@ -16,7 +18,7 @@ export function readThemePreference() {
     const stored = localStorage.getItem(THEME_KEY);
     if (THEME_ORDER.includes(stored)) return stored;
   } catch (_error) {
-    /* localStorage puede estar deshabilitado. */
+    /* localStorage may be disabled. */
   }
   return "system";
 }
@@ -54,7 +56,7 @@ export function createThemeController({ button, meta } = {}) {
     try {
       localStorage.setItem(THEME_KEY, preference);
     } catch (_error) {
-      /* sin persistencia */
+      /* no persistence */
     }
     apply();
     return preference;
@@ -165,7 +167,7 @@ export function formatRelativeTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Fecha desconocida";
 
-  // Always show exact date/time instead of relative "hace un momento"
+  // Always show the exact date/time instead of a relative "just now" message
   return dateFormatter.format(date);
 }
 
@@ -198,7 +200,7 @@ export async function copyText(text) {
       return true;
     }
   } catch (_error) {
-    /* Intentamos el fallback. */
+    /* Try the fallback. */
   }
 
   try {

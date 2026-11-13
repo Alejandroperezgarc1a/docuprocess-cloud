@@ -1,12 +1,15 @@
-/** Runtime configuration loaded from environment variables. */
+/**
+ * Runtime configuration for DocuProcess Cloud, loaded and validated from
+ * environment variables before the server starts.
+ */
 export interface Config {
   docsBucket: string;
   ddbTable: string;
   ddbEventsTable: string;
   /** When false, state and audit event are written sequentially (Sandbox fallback). */
-  // Por qué: el alta debe escribir documento + evento de forma atómica. Si una SCP
-  // deniega las escrituras transaccionales, DDB_TRANSACTIONS=false permite seguir operando (sin
-  // atomicidad) en vez de bloquear toda la plataforma.
+  // Why: creation must write document + event atomically. If an SCP denies
+  // transactional writes, DDB_TRANSACTIONS=false keeps the platform running
+  // (without atomicity) instead of blocking everything.
   ddbTransactions: boolean;
   dbHost: string;
   dbPort: number;
@@ -22,8 +25,8 @@ export interface Config {
 const REQUIRED_ENV = [
   'DOCS_BUCKET',
   'DDB_TABLE',
-  // Obligatoria a propósito: sin la tabla de eventos la API arrancaba "a medias"
-  // (subidas sin bitácora). Fallar rápido al arranque es preferible a datos huérfanos.
+  // Required on purpose: without the events table the API would boot "half"
+  // (uploads without an audit trail). Failing fast at startup is preferable to orphan data.
   'DDB_EVENTS_TABLE',
   'DB_HOST',
   'DB_NAME',
@@ -81,9 +84,9 @@ export function loadConfig(
     throw new ConfigError('DB_PORT debe estar entre 1 y 65535');
   }
 
-  // Default 'true': la atomicidad es el comportamiento normal; false es solo el
-  // escape hatch del Sandbox (ver docs/architecture.md, sección 12). Se valida de
-  // forma estricta para no aceptar typos como 'si' o '1'.
+  // Default 'true': atomicity is the normal behavior; false is only the Sandbox
+  // escape hatch (see docs/architecture.md, section 12). Validated strictly so
+  // typos like 'si' or '1' are rejected.
   const transactionsRaw = (env.DDB_TRANSACTIONS ?? 'true').trim().toLowerCase();
   if (transactionsRaw !== 'true' && transactionsRaw !== 'false') {
     throw new ConfigError('DDB_TRANSACTIONS debe ser true o false');

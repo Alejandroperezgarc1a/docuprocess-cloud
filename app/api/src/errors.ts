@@ -1,3 +1,7 @@
+/**
+ * Standard API error envelope ({error, message}) and HTTP status/error-code
+ * mapping shared by all DocuProcess Cloud endpoints.
+ */
 import type { Response } from 'express';
 
 /** Sends an API error with the standard {error, message} shape. */

@@ -1,3 +1,7 @@
+/**
+ * Document routes for the DocuProcess Cloud API: authenticated creation with
+ * pre-signed S3 URLs, listing, detail and audit-trail reads backed by DynamoDB.
+ */
 import { randomUUID } from 'node:crypto';
 import type { Express } from 'express';
 import { requireAuth } from './auth.js';
@@ -134,10 +138,11 @@ export function registerDocumentRoutes(
       updatedAt: timestamp,
     };
 
-    // Evento inicial de la bitácora. actor=api (lo produce la API, no el worker) y fromStatus
-    // ausente (no hay estado anterior). eventDay se materializa porque DynamoDB no permite
-    // funciones en las claves del GSI day-eventAt. eventAt lleva un sufijo aleatorio para que
-    // dos eventos del mismo milisegundo no colisionen en la clave (documentId, eventAt).
+    // Initial audit-trail event. actor=api (produced by the API, not the worker) and
+    // fromStatus absent (there is no previous state). eventDay is materialized because
+    // DynamoDB does not allow functions in the keys of the day-eventAt GSI. eventAt gets
+    // a random suffix so two events in the same millisecond don't collide on the
+    // (documentId, eventAt) key.
     const event: DocumentEvent = {
       documentId,
       eventAt: `${timestamp}#${randomUUID().slice(0, 6)}`,
@@ -208,7 +213,7 @@ export function registerDocumentRoutes(
 
     const rawDocumentId = req.params.documentId;
     const documentId = typeof rawDocumentId === 'string' ? rawDocumentId : '';
-    // 404 (no 400) para no revelar si el id existe: mismo criterio que el resto del API.
+    // 404 (not 400) so we don't reveal whether the id exists: same rule as the rest of the API.
     if (!UUID_RE.test(documentId)) {
       errorResponse(res, 'not_found', 'Documento no encontrado.', 404);
       return;
@@ -231,8 +236,8 @@ export function registerDocumentRoutes(
       return;
     }
 
-    // 404 (no 403): un usuario no puede distinguir "no existe" de "es de otro". Se evita
-    // revelar la existencia del recurso — y de paso, la propiedad se comprueba siempre.
+    // 404 (not 403): a user can't tell "does not exist" from "belongs to someone else".
+    // This hides the resource's existence — and ownership is always verified anyway.
     if (item === undefined || item.userId !== userId) {
       errorResponse(res, 'not_found', 'Documento no encontrado.', 404);
       return;
@@ -241,8 +246,8 @@ export function registerDocumentRoutes(
     res.status(200).json(item);
   });
 
-  // Bitácora auditable del documento. Se lee de document_events (append-only), no del ítem
-  // documents: así el historial no se puede reescribir y sobrevive a cambios de estado.
+  // Auditable trail of the document. Read from document_events (append-only), not from the
+  // documents item: history can't be rewritten and survives state changes.
   app.get('/api/documents/:documentId/events', auth, async (req, res) => {
     const userId = req.userId;
     if (userId === undefined) {
@@ -252,14 +257,14 @@ export function registerDocumentRoutes(
 
     const rawDocumentId = req.params.documentId;
     const documentId = typeof rawDocumentId === 'string' ? rawDocumentId : '';
-    // 404 (no 400) para no revelar si el id existe: mismo criterio que el resto del API.
+    // 404 (not 400) so we don't reveal whether the id exists: same rule as the rest of the API.
     if (!UUID_RE.test(documentId)) {
       errorResponse(res, 'not_found', 'Documento no encontrado.', 404);
       return;
     }
 
-    // Primero se comprueba la propiedad del documento: un usuario no puede leer la bitácora
-    // de otro. Después se consulta la tabla de eventos.
+    // Ownership of the document is checked first: a user can't read someone else's audit
+    // trail. Only then is the events table queried.
     let item: DocumentItem | undefined;
     try {
       item = await aws.getDocument(documentId);
@@ -277,8 +282,8 @@ export function registerDocumentRoutes(
       return;
     }
 
-    // 404 (no 403): un usuario no puede distinguir "no existe" de "es de otro". Se evita
-    // revelar la existencia del recurso — y de paso, la propiedad se comprueba siempre.
+    // 404 (not 403): a user can't tell "does not exist" from "belongs to someone else".
+    // This hides the resource's existence — and ownership is always verified anyway.
     if (item === undefined || item.userId !== userId) {
       errorResponse(res, 'not_found', 'Documento no encontrado.', 404);
       return;

@@ -1,3 +1,7 @@
+/**
+ * Schema contract tests for DocuProcess Cloud: schema.sql contains the users
+ * table of the integration contract and splits into a single statement.
+ */
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
@@ -6,7 +10,7 @@ import { parseSchemaStatements } from '../src/db.js';
 const SCHEMA_URL = new URL('../schema.sql', import.meta.url);
 
 describe('schema', () => {
-  it('tiene la tabla y columnas del contrato', async () => {
+  it('has the table and columns of the contract', async () => {
     const text = await readFile(SCHEMA_URL, 'utf8');
 
     assert.match(text, /CREATE TABLE IF NOT EXISTS users/);
@@ -17,7 +21,7 @@ describe('schema', () => {
     assert.match(text, /UNIQUE KEY uq_users_email \(email\)/);
   });
 
-  it('se divide en una sola sentencia', async () => {
+  it('splits into a single statement', async () => {
     const raw = await readFile(SCHEMA_URL, 'utf8');
     const statements = parseSchemaStatements(raw);
 

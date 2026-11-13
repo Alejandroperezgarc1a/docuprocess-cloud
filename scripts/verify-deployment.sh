@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Verifica un despliegue de DocuProcess Cloud (C4) o que la cuenta quedó limpia tras el destroy.
-# Solo lee: no crea ni borra nada. Termina con código 0 si todo está bien y 1 si algo falla.
+# Verifies a DocuProcess Cloud deployment (C4) or that the account is clean after the destroy.
+# Read-only: creates or deletes nothing. Exits with code 0 if everything is fine and 1 if something fails.
 #
-# Uso (desde cualquier carpeta del repositorio):
-#   ./scripts/verify-deployment.sh            # tras terraform apply + deploy-frontend.sh
-#   ./scripts/verify-deployment.sh limpieza   # tras terraform destroy: no deben quedar recursos
+# Usage (from any folder of the repository):
+#   ./scripts/verify-deployment.sh            # after terraform apply + deploy-frontend.sh
+#   ./scripts/verify-deployment.sh limpieza   # after terraform destroy: no resources must remain
 #
-# Los acentos graves dentro de --query son literales de JMESPath (p. ej. `InService`), no
-# sustituciones de comandos: van entre comillas simples a propósito.
+# The backticks inside --query are JMESPath literals (e.g. `InService`), not
+# command substitutions: they go between single quotes on purpose.
 # shellcheck disable=SC2016
 set -uo pipefail
 
@@ -22,10 +22,10 @@ mal=0
 
 pass() { echo "  ✅ $1"; ok=$((ok + 1)); }
 fail() { echo "  ❌ $1"; mal=$((mal + 1)); }
-expect() { # descripción valor_obtenido valor_esperado
+expect() { # description actual value expected value
   if [ "$2" = "$3" ]; then pass "$1 ($2)"; else fail "$1: esperado '$3', obtenido '${2:-vacío}'"; fi
 }
-empty() { # descripción valor
+empty() { # description value
   if [ -z "$2" ] || [ "$2" = "None" ]; then pass "$1: nada"; else fail "$1: quedan $2"; fi
 }
 tf_output() { terraform -chdir="$INFRA_DIR" output -raw "$1" 2>/dev/null; }
@@ -103,7 +103,7 @@ done
 echo "== Monitoreo"
 expect "alarmas de CloudWatch del proyecto" "$(aws cloudwatch describe-alarms --region "$REGION" \
   --alarm-name-prefix docuprocess-dev --query 'length(MetricAlarms)')" "4"
-# Las suscripciones pendientes no se pueden borrar (AWS las expira a los 3 días): basta con una confirmada.
+# Pending subscriptions cannot be deleted (AWS expires them after 3 days): one confirmed one is enough.
 CONFIRMED="$(aws sns list-subscriptions-by-topic --region "$REGION" --topic-arn "$(tf_output sns_topic_arn)" \
   --query "length(Subscriptions[?SubscriptionArn!='PendingConfirmation'])" --output text)"
 if [ "${CONFIRMED:-0}" -ge 1 ]; then

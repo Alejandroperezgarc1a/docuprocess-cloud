@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# No se fija AWS_PROFILE: se usa el que tenga el llamador (Terraform hereda su
-# entorno) o, si no hay, la cadena de credenciales por defecto de AWS.
+# AWS_PROFILE is not fixed: it uses the caller's one (Terraform inherits its
+# environment) or, if none exists, the default AWS credential chain.
 
 if [ "$#" -lt 1 ]; then
   echo "usage: $0 <bucket> [<bucket> ...]" >&2
@@ -17,11 +17,11 @@ for bucket in "$@"; do
 
   echo "empty-bucket: vaciando s3://$bucket" >&2
 
-  # Borra los objetos actuales. En buckets versionados esto crea delete markers
-  # que se eliminan en el siguiente bloque.
+  # Deletes the current objects. On versioned buckets this creates delete markers
+  # that are removed in the next block.
   aws s3 rm "s3://$bucket" --recursive --only-show-errors || true
 
-  # Borra todas las versiones y delete markers.
+  # Deletes all versions and delete markers.
   while true; do
     versions_json="$(aws s3api list-object-versions --bucket "$bucket" --max-items 1000 --output json)"
     count="$(printf '%s' "$versions_json" | python3 -c '
@@ -44,7 +44,7 @@ print(json.dumps({"Objects": objects, "Quiet": True}))
     aws s3api delete-objects --bucket "$bucket" --delete "$delete_json" >/dev/null
   done
 
-  # Aborta uploads multipart incompletos.
+  # Aborts incomplete multipart uploads.
   while true; do
     uploads_json="$(aws s3api list-multipart-uploads --bucket "$bucket" --max-items 1000 --output json)"
     count="$(printf '%s' "$uploads_json" | python3 -c '

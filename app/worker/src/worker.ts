@@ -1,3 +1,7 @@
+/**
+ * Entry point of the DocuProcess Cloud worker: loads config, runs the poll
+ * loop over the DynamoDB queue and shuts down cleanly on SIGTERM/SIGINT.
+ */
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createAwsService, type AwsService } from './aws.js';
@@ -6,7 +10,7 @@ import { createLogger, errorFields, type Logger } from './logger.js';
 import { processItem } from './process.js';
 
 export interface RunWorkerOptions {
-  /** Se consulta antes de reclamar el siguiente item y durante el poll. */
+  /** Checked before claiming the next item and during the poll. */
   isStopping?: () => boolean;
   signal?: AbortSignal;
 }
@@ -30,9 +34,9 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /**
- * Bucle principal. Nunca deja que el fallo de un item detenga el worker.
- * El limite de la query es mayor que el batch para no quedar bloqueado por
- * documentos PENDING que aun no tienen archivo en S3.
+ * Main loop. Never lets the failure of one item stop the worker. The query
+ * limit is larger than the batch so the loop is not blocked by PENDING
+ * documents that do not have a file in S3 yet.
  */
 export async function runWorker(
   config: WorkerConfig,
@@ -63,7 +67,7 @@ export async function runWorker(
           claimed += 1;
         }
       } catch (error) {
-        // Defensa adicional: processItem ya captura sus errores.
+        // Extra defense: processItem already catches its own errors.
         logger.error('item_unhandled_error', {
           documentId: item.documentId,
           ...errorFields(error),

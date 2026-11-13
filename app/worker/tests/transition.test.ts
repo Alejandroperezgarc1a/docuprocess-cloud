@@ -1,3 +1,4 @@
+// Tests for status transitions and append-only events of the DocuProcess Cloud worker.
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { buildTerminalUpdate, makeEvent } from '../src/aws.js';
@@ -5,22 +6,22 @@ import { makeItem } from './helpers/fakes.js';
 
 const NOW = '2026-11-11T12:00:00.000Z';
 
-describe('transiciones y eventos', () => {
-  it('DONE elimina error y conserva result', () => {
+describe('transitions and events', () => {
+  it('DONE removes error and keeps result', () => {
     const expression = buildTerminalUpdate('DONE');
     assert.match(expression, /#r = :result/);
     assert.match(expression, /REMOVE #e/);
     assert.doesNotMatch(expression, /REMOVE #r/);
   });
 
-  it('FAILED elimina result y conserva error', () => {
+  it('FAILED removes result and keeps error', () => {
     const expression = buildTerminalUpdate('FAILED');
     assert.match(expression, /#e = :error/);
     assert.match(expression, /REMOVE #r/);
     assert.doesNotMatch(expression, /REMOVE #e/);
   });
 
-  it('genera evento worker con eventAt unico y schemaVersion 1', () => {
+  it('generates worker event with unique eventAt and schemaVersion 1', () => {
     const event = makeEvent(makeItem(), 'PENDING', 'PROCESSING', NOW, {
       reason: 'worker claimed',
     });

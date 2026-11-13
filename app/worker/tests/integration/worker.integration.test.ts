@@ -1,3 +1,4 @@
+// Integration tests for the DocuProcess Cloud worker against DynamoDB Local + real S3.
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
@@ -52,7 +53,7 @@ async function stopChild(child: ChildProcess): Promise<void> {
   }
 }
 
-/** Une los chunks de stdout/stderr y parsea solo las lineas JSON del logger. */
+/** Joins the stdout/stderr chunks and parses only the JSON lines from the logger. */
 function parseLogs(outputs: string[]): LogRecord[] {
   const logs: LogRecord[] = [];
   for (const line of outputs.join('').split('\n')) {
@@ -66,8 +67,8 @@ function parseLogs(outputs: string[]): LogRecord[] {
         logs.push(parsed as LogRecord);
       }
     } catch {
-      // Un chunk puede partir una linea; el join ya la reconstruye, pero si aun
-      // asi no es JSON valido se ignora en vez de romper la prueba.
+      // A chunk may split a line; the join already rebuilds it, but if it is
+      // still not valid JSON it is ignored instead of breaking the test.
     }
   }
   return logs;
@@ -106,7 +107,7 @@ function buildEnv(): NodeJS.ProcessEnv {
   };
 }
 
-/** Arranca un worker y acumula sus logs en `outputs`. */
+/** Starts a worker and collects its logs into `outputs`. */
 function startWorker(env: NodeJS.ProcessEnv, outputs: string[]): ChildProcess {
   const child = spawn(process.execPath, ['dist/worker.js'], {
     cwd: APP_DIR,
@@ -227,7 +228,7 @@ function makeDocument(
   };
 }
 
-/** Verifica que el worker haya publicado en SNS (o registrado el skip sin topic). */
+/** Checks that the worker published to SNS (or logged the skip when no topic). */
 function assertSns(
   logs: LogRecord[],
   entries: Array<{ documentId: string; status: string }>,
@@ -242,7 +243,7 @@ function assertSns(
       );
       assert.ok(
         published,
-        `No se publico en SNS ${entry.status} para ${entry.documentId}`,
+        `SNS publish missing for ${entry.status} on ${entry.documentId}`,
       );
     }
     return;
@@ -252,16 +253,16 @@ function assertSns(
   assert.equal(
     skipped.length,
     entries.length,
-    `SNS vacio: se esperaban ${entries.length} sns_skipped y hubo ${skipped.length}`,
+    `Empty SNS: expected ${entries.length} sns_skipped and got ${skipped.length}`,
   );
 }
 
 suite('worker integration (DynamoDB Local + S3 real)', () => {
   it(
-    'dos workers procesan 20 items exactamente una vez',
+    'two workers process 20 items exactly once',
     { timeout: 120_000 },
     async () => {
-      assert.ok(DOCS_BUCKET !== '', 'Define DOCS_BUCKET para RUN_INTEGRATION=1');
+      assert.ok(DOCS_BUCKET !== '', 'Define DOCS_BUCKET to run with RUN_INTEGRATION=1');
 
       const { ddb, s3, ddbClient } = createClients();
       const runId = randomUUID().slice(0, 8);
@@ -298,7 +299,7 @@ suite('worker integration (DynamoDB Local + S3 real)', () => {
         }, 45_000);
         assert.ok(
           allDone,
-          `Quedaron documentos sin DONE.\n${outputs.join('')}`,
+          `Documents left without DONE.\n${outputs.join('')}`,
         );
 
         for (const item of items) {
@@ -319,7 +320,7 @@ suite('worker integration (DynamoDB Local + S3 real)', () => {
           assert.deepEqual(
             transitions.sort(),
             ['DONE', 'PROCESSING'],
-            `Eventos inesperados para ${item.documentId}: ${transitions.join(',')}`,
+            `Unexpected events for ${item.documentId}: ${transitions.join(',')}`,
           );
         }
 
@@ -341,10 +342,10 @@ suite('worker integration (DynamoDB Local + S3 real)', () => {
   );
 
   it(
-    'salta objetos aun no subidos y falla los que superaron el timeout',
+    'skips objects not yet uploaded and fails those past the timeout',
     { timeout: 60_000 },
     async () => {
-      assert.ok(DOCS_BUCKET !== '', 'Define DOCS_BUCKET para RUN_INTEGRATION=1');
+      assert.ok(DOCS_BUCKET !== '', 'Define DOCS_BUCKET to run with RUN_INTEGRATION=1');
 
       const { ddb, s3, ddbClient } = createClients();
       const runId = randomUUID().slice(0, 8);
@@ -380,11 +381,11 @@ suite('worker integration (DynamoDB Local + S3 real)', () => {
         }, 45_000);
         assert.ok(
           expiredFailed,
-          `El objeto vencido no paso a FAILED.\n${outputs.join('')}`,
+          `The expired object did not transition to FAILED.\n${outputs.join('')}`,
         );
 
-        // Deja correr un par de ciclos para confirmar que el objeto reciente
-        // se salta sin cambiar de estado.
+        // Let a couple of cycles run to confirm the recent object is
+        // skipped without changing state.
         await delay(2_000);
         await Promise.all(children.map((child) => stopChild(child)));
 
@@ -399,7 +400,7 @@ suite('worker integration (DynamoDB Local + S3 real)', () => {
         assert.deepEqual(
           expiredEvents.map((event) => event.toStatus).sort(),
           ['FAILED'],
-          `Eventos inesperados para ${expired.documentId}: ` +
+          `Unexpected events for ${expired.documentId}: ` +
             expiredEvents.map((event) => event.toStatus).join(','),
         );
         assert.equal(expiredEvents[0]?.actor, 'worker');
@@ -411,7 +412,7 @@ suite('worker integration (DynamoDB Local + S3 real)', () => {
               log.event === 'upload_pending' &&
               log.documentId === fresh.documentId,
           ),
-          `No se registro upload_pending para ${fresh.documentId}`,
+          `upload_pending was not logged for ${fresh.documentId}`,
         );
         assert.ok(
           logs.some(
@@ -419,7 +420,7 @@ suite('worker integration (DynamoDB Local + S3 real)', () => {
               log.event === 'upload_timeout' &&
               log.documentId === expired.documentId,
           ),
-          `No se registro upload_timeout para ${expired.documentId}`,
+          `upload_timeout was not logged for ${expired.documentId}`,
         );
         assertSns(logs, [
           { documentId: expired.documentId, status: 'FAILED' },

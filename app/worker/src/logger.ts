@@ -1,3 +1,4 @@
+/** JSON logger to stdout for the DocuProcess Cloud worker (journald on instances). */
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface Logger {
@@ -29,7 +30,7 @@ function serializableError(error: unknown): Record<string, unknown> {
   };
 }
 
-/** Crea un logger JSON a stdout (journald en las instancias). */
+/** Creates a JSON logger to stdout (journald on the instances). */
 export function createLogger(
   level: LogLevel,
   base: Record<string, unknown> = {},
