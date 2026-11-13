@@ -190,6 +190,16 @@ export function registerAuthRoutes(app: Express, config: Config, db: Db): void {
     const passwordHash = await hashPassword(password as string);
     try {
       const userId = await db.createUser(email, passwordHash);
+      if (config.adminEmails.includes(email)) {
+        try {
+          await db.promoteAdmins([email]);
+        } catch (error) {
+          console.error(
+            `${new Date().toISOString()} ERROR docuprocess.api: no se pudo promover a admin en register:`,
+            error,
+          );
+        }
+      }
       res.status(201).json({ id: userId, email });
     } catch (error) {
       if (error instanceof EmailAlreadyExists) {
@@ -260,8 +270,25 @@ export function registerAuthRoutes(app: Express, config: Config, db: Db): void {
       return;
     }
 
+    // Promueve a admin segun ADMIN_EMAILS tambien en login: en un despliegue
+    // limpio la tabla users puede estar vacia y el rol solo se aplicaria al
+    // arranque (antes de existiera el usuario). Aqui se garantiza antes de
+    // firmar el token.
+    let role = typeof user.role === 'string' ? user.role : 'user';
+    if (config.adminEmails.includes(user.email) && role !== 'admin') {
+      try {
+        await db.promoteAdmins([user.email]);
+        role = 'admin';
+      } catch (error) {
+        console.error(
+          `${new Date().toISOString()} ERROR docuprocess.api: no se pudo promover a admin en login:`,
+          error,
+        );
+      }
+    }
+
     const token = jwt.sign(
-      { sub: String(user.id), email: user.email, role: user.role, jti: randomUUID() },
+      { sub: String(user.id), email: user.email, role, jti: randomUUID() },
       config.jwtSecret,
       { algorithm: 'HS256', expiresIn: JWT_TTL_SECONDS },
     );

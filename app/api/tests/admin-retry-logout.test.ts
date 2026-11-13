@@ -153,3 +153,41 @@ describe('admin y retry de documentos fallidos', () => {
     assert.equal(retry.status, 404);
   });
 });
+
+describe('admin-promotion-on-register/login', () => {
+  it('un correo en ADMIN_EMAILS queda admin sin pasos extra (registro nuevo vacio)', async () => {
+    const context = makeApp({ config: { adminEmails: ['direct-admin@example.com'] } });
+    const { headers } = await registerAndLogin(context.app, 'direct-admin@example.com');
+
+    const response = await request(context.app)
+      .get('/api/admin/documents')
+      .set(headers);
+    assert.equal(response.status, 200);
+  });
+
+  it('ADMIN_EMAILS promueve en login a un usuario que ya existia como user', async () => {
+    const context = makeApp({ config: { adminEmails: ['old-user@example.com'] } });
+
+    // Simula un usuario creado antes de que su correo estuviera en ADMIN_EMAILS:
+    // se inserta directamente con role 'user' en el fake y se intenta login.
+    const { hashPassword } = await import('../src/auth.js');
+    context.db.users.set('old-user@example.com', {
+      id: 42,
+      email: 'old-user@example.com',
+      password_hash: await hashPassword('password123'),
+      role: 'user',
+    });
+
+    const login = await request(context.app)
+      .post('/api/auth/login')
+      .send({ email: 'old-user@example.com', password: 'password123' });
+    assert.equal(login.status, 200);
+    const headers = { Authorization: `Bearer ${login.body.token}` };
+
+    const response = await request(context.app)
+      .get('/api/admin/documents')
+      .set(headers);
+    assert.equal(response.status, 200);
+    assert.equal(context.db.users.get('old-user@example.com')?.role, 'admin');
+  });
+});

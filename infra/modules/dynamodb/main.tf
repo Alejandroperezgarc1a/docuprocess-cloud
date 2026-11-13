@@ -90,6 +90,8 @@ resource "aws_dynamodb_resource_policy" "documents" {
           "dynamodb:PutItem",
           "dynamodb:UpdateItem",
           "dynamodb:Query",
+          # El panel de administración (GET /api/admin/documents) lista todos los documentos.
+          "dynamodb:Scan",
         ]
         Resource = [
           aws_dynamodb_table.documents.arn,
