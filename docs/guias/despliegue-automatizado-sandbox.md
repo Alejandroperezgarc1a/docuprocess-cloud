@@ -1194,7 +1194,6 @@ Incidencias y solución:
 ### D. Enlaces útiles
 
 - Guía rápida: [`despliegue.md`](despliegue.md)
-- Credenciales de AWS Academy: [`aws-academy-credenciales.md`](aws-academy-credenciales.md)
 - Pruebas de storage: [`pruebas-storage.md`](pruebas-storage.md)
 - Arquitectura e integración: [`../architecture.md`](../architecture.md)
 - RDS vs. DynamoDB: [`../rds-vs-dynamodb.md`](../rds-vs-dynamodb.md)
