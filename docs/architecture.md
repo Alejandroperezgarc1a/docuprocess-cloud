@@ -1,6 +1,6 @@
 # Arquitectura de DocuProcess Cloud
 
-> Este documento tiene dos partes. La **vista general** (B11) describe la plataforma desplegada: diagrama de componentes, flujo de un documento, inventario de recursos por módulo de Terraform, permisos de la aplicación y restricciones del Sandbox. Los **contratos de integración** (C1) son la fuente de verdad que comparten la API, el worker, el frontend y Terraform; todo cambio a un contrato se hace con un PR que actualice esa sección.
+> Este documento tiene dos partes. La **vista general** (B11) describe la plataforma desplegada: diagrama de componentes, flujo de un documento, inventario de recursos por módulo de Terraform, permisos de la aplicación, restricciones del Sandbox y la justificación del diseño de datos (RDS frente a DynamoDB). Los **contratos de integración** (C1) son la fuente de verdad que comparten la API, el worker, el frontend y Terraform; todo cambio a un contrato se hace con un PR que actualice esa sección.
 
 ## Vista general
 
@@ -228,6 +228,64 @@ Otros principales con acceso por política de recurso:
 | No se pueden crear llaves KMS propias | Cifrado con llaves administradas por AWS: SSE-S3, `aws/rds`, `aws/dynamodb`, `aws/ssm` |
 | Tipos de instancia limitados | Validación en `instance_type`: solo `t2`/`t3` `micro`, `small` o `medium`; por defecto `t3.micro` |
 | Costo y tiempo de creación de RDS Multi-AZ | `multi_az = false`; el subnet group ya cubre dos AZ para pasar a Multi-AZ sin rehacer la red |
+
+### Justificación del diseño técnico: RDS vs. DynamoDB
+
+La plataforma usa **dos motores de base de datos** porque resuelven problemas distintos. La regla de diseño es: **RDS para lo que exige integridad relacional; DynamoDB para lo que exige acceso por clave y escala horizontal; S3 para los bytes**.
+
+| Necesidad del sistema | Motor elegido | Por qué |
+| --- | --- | --- |
+| Cuentas, correos únicos y autenticación | **RDS MySQL 8.0** (`db.t3.micro`, Single-AZ) | Datos relacionales con unicidad, transacciones ACID y consultas por correo; el esquema cambia poco y el volumen es pequeño |
+| Estado de cada documento y cola del worker | **DynamoDB** (`documents`, on-demand) | Acceso por clave (`documentId`) y por índice (`userId`, `status`); escala sin administrar servidores y la carga es intermitente |
+| Historial auditable de cambios de estado | **DynamoDB** (`document_events`, append-only) | Eventos inmutables ordenados por `documentId` + `eventAt`; crecen sin migraciones ni joins |
+| Archivos originales | **S3** | Objetos binarios de hasta 10 MB; no pertenecen a una base de datos |
+
+#### RDS MySQL: cuentas y autenticación
+
+La tabla `users` necesita **unicidad del correo** (`UNIQUE(email)`), **transacciones ACID**, **consultas por atributo** (`WHERE email = ?`) e **integridad referencial** si se agregan tablas relacionadas. El correo es un atributo consultable, no una clave natural; en DynamoDB habría que mantener un ítem «correo → usuario» y coordinar dos escrituras por registro. Además, el login compara el hash de bcrypt después de buscar por correo: en SQL es una consulta trivial; en DynamoDB serían dos accesos por clave.
+
+El esquema lo aplica la API al arrancar (`app/api/schema.sql`), no Terraform: Terraform crea la instancia, no las tablas. En el Sandbox la instancia es Single-AZ, `gp2` y `db.t3.micro`; el subnet group cubre dos AZ para poder pasar a Multi-AZ sin rehacer la red.
+
+#### DynamoDB: documentos, cola y bitácora
+
+Los documentos tienen tres patrones de acceso conocidos de antemano:
+
+1. **Por documento:** `GetItem(documentId)` para el detalle y para que el worker lo reclame.
+2. **Por usuario:** `Query` del GSI `userId-createdAt`, más recientes primero (lista del frontend).
+3. **Por estado:** `Query` del GSI `status-createdAt` para que el worker tome los `PENDING` más antiguos (cola lógica).
+
+La bitácora añade un cuarto patrón: **por documento en orden cronológico** (`Query(documentId)` ascendente). Los GSI `userId-eventAt` y `day-eventAt` permiten auditar a un usuario entre documentos o un día completo sin `Scan`.
+
+DynamoDB encaja porque el estado del documento es **variable en la práctica**: `result` cambia según el tipo (páginas para PDF, ancho/alto para imágenes) y `error` solo existe en `FAILED`. En SQL serían columnas nulas o una tabla de atributos; en DynamoDB es un mapa opcional. La cola se resuelve con el GSI y un `UpdateItem` condicional (`#s = :pending`), sin bloquear filas ni abrir conexiones mientras se reclama. El historial crece de forma monotónica y el `PutItem` es O(1); una tabla de eventos en MySQL obligaría a administrar particiones, purgas y capacidad.
+
+La tabla `document_events` es **append-only**: la política de recurso del rol no concede `UpdateItem` ni `DeleteItem`, así que la inmutabilidad la impone AWS y no solo el código. Estado y evento se escriben juntos con `TransactWriteItems`; con `DDB_TRANSACTIONS=false` (respaldo del Sandbox) se escriben en secuencia.
+
+#### Comparación lado a lado
+
+| Criterio | RDS MySQL | DynamoDB |
+| --- | --- | --- |
+| Modelo | Relacional, SQL, joins | Clave-valor/documento, API por ítem |
+| Esquema | Fijo, migraciones | Flexible; solo se declaran claves e índices |
+| Unicidad | `UNIQUE`, `PRIMARY KEY` | Condiciones (`attribute_not_exists`) o claves diseñadas |
+| Transacciones | ACID completas | `TransactWriteItems` / `TransactGetItems` (hasta 100 ítems) |
+| Consistencia | Fuerte por defecto | Eventual en GSIs; `ConsistentRead` en la tabla base |
+| Escala | Vertical (clase de instancia) | Horizontal (particiones) |
+| Capacidad | Aprovisionada | On-demand o aprovisionada |
+| Consultas ad hoc | Sí (`WHERE`, `JOIN`, `GROUP BY`) | No: hay que diseñar índices o usar `Scan` (caro) |
+| Backups | Automáticos + snapshots | PITR (35 días) + on-demand |
+| Seguridad de acceso | SG + usuario/contraseña + TLS | Políticas de recurso/IAM + cifrado en reposo |
+| Operación | Parches y ventanas de RDS | Totalmente gestionado, sin servidores |
+| Límite por ítem | Filas sin límite práctico | 400 KB |
+| Costo en la demo | Instancia `db.t3.micro` encendida 24/7 | Por petición (céntimos) |
+| Ajuste al problema | Cuentas y autenticación | Estado, cola e historial |
+
+#### Por qué no una sola base
+
+**Todo en RDS** es viable a esta escala, pero acopla la carga del worker a la de autenticación: el worker sondea la cola cada 5 segundos desde 2 a 4 instancias y compite por CPU y conexiones con el login, que ya es la operación cara (bcrypt costo 12). La cola requeriría `SELECT … FOR UPDATE SKIP LOCKED` con conexiones abiertas, el `result` variable serían columnas nulas, la inmutabilidad de la bitácora dependería de `GRANT`s que la propia API administra y una caída de RDS (Single-AZ) detendría también el procesamiento.
+
+**Todo en DynamoDB** obligaría a resolver la unicidad del correo con un ítem sintético y transacciones, a buscar el usuario por un atributo que no es clave y a renunciar a joins y consultas ad hoc. El volumen de usuarios de la demo no necesita escala horizontal y el enunciado pide RDS para cuentas y autenticación.
+
+**Consecuencia aceptada:** una caída de RDS solo afecta registro y login; los documentos, la cola y el historial siguen disponibles. El health check del ALB (`/api/health`) no depende de MySQL, así que el ASG no recicla instancias por una caída de la base. Si el volumen creciera, el siguiente paso sería S3 → SQS → worker, manteniendo DynamoDB como fuente de verdad y el `UpdateItem` condicional como garantía de idempotencia.
 
 ## Contratos de integración
 
