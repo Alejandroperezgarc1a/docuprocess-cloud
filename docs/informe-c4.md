@@ -18,7 +18,7 @@ Ambas pasadas fueron interrumpidas por reinicios del laboratorio (voc-cancel-cre
 - Ninguna pasada completa **sin interrupciones** termina aún en un único run reproducible (los dos anteriores requirieron reintentos/ajustes del lab).
 - No hay C4 para la sesión del 13-nov: el lab quedó vacío de nuevo entre sesiones.
 
-## Procedimiento para la sesión C4 (2026-11-17, laboratorio nuevo)
+## Procedimiento para la sesión C4 (2026-11-13, laboratorio nuevo)
 
 1. Abrir laboratorio nuevo (AWS Academy), copiar credenciales; `~/.aws/credentials` → perfil del lab.
 2. `cp infra/terraform.tfvars.example infra/terraform.tfvars` (completar `alert_email`, `db_password`, `jwt_secret`).
@@ -32,5 +32,5 @@ Ambas pasadas fueron interrumpidas por reinicios del laboratorio (voc-cancel-cre
 
 ## Estado final (cierre 2026-11-13)
 
-- **Planificado** para el 2026-11-17 (issue #23). ⚠️
+- **Planificado** para el 2026-11-13 (issue #23), en la entrega final. ⚠️
 - **Dependiente de**: sesión del lab con permisos de observación (igual que B10/A8) + SNS confirmado del buzón del equipo.

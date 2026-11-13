@@ -52,4 +52,4 @@ Antecedente que sí existe: el drill de tolerancia a fallos del 2026-11-13 (un `
 
 - **Implementación**: completa y revisada (script, policy target tracking, alarmas). ✅
 - **Evidencia viva en esta sesión**: **no obtenible** (SCP). ⚠️
-- **Pendiente para la defensa**: ejecutar el procedimiento anterior en una sesión con permisos (planificado con C4, 2026-11-17) y pegar los logs redactados en este documento.
+- **Pendiente para la defensa**: ejecutar el procedimiento anterior en una sesión con permisos (planificado con C4, 2026-11-13) y pegar los logs redactados en este documento.

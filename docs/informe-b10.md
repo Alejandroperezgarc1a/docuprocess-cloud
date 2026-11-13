@@ -67,4 +67,4 @@ En cualquiera de los dos casos, actualizar `docs/trazabilidad.md` (filas 9 y 10)
 - **Código**: implementado, cableado y en `main` (PR #51). ✅
 - **Verificación viva (alarmas/ASG/eventos)**: **no obtenible desde la sesión voclabs actual**; documentado el bloqueo y el procedimiento exacto para obtenerla en consola o en una sesión con permisos. ⚠️
 - **Trazabilidad**: filas 9 y 10 anotadas como `Implementado` (no `Verificado`) hasta obtener la evidencia.
-- **Pendiente para la defensa**: capturar las evidencias del apartado «Cómo cerrar…» en la consola del laboratorio (o sesión con permisos) antes del 17 de noviembre y pegarlas en este documento con los IDs redactados.
+- **Pendiente para la defensa**: capturar las evidencias del apartado «Cómo cerrar…» en la consola del laboratorio (o sesión con permisos) antes de la entrega del 13 de noviembre y pegarlas en este documento con los IDs redactados.
