@@ -51,7 +51,38 @@ El laboratorio **no estaba limpio**: al reutilizarlo, conservó recursos de un d
 - La suscripción SNS quedó `PendingConfirmation` al desplegar; se confirmó el buzón después ese mismo día (13-nov), así que las alertas ya se entregan (ver la evidencia de monitoreo).
 - `terraform destroy` no se ejecutó (el stack se conserva para la defensa/demo).
 
+## Segunda corrida: cuenta vacía verificada (2026-11-13, ~21:03–21:55 UTC)
+
+Corrida independiente en otra cuenta del Sandbox para cumplir el criterio de "plantilla limpia" sin importar huérfanos: clon nuevo desde GitHub (`main` = `93a2209`, B11 incluido), sin estado de Terraform y con la cuenta comprobada vacía antes de empezar (`./scripts/verify-deployment.sh limpieza` → 12/12).
+
+| Paso | Resultado | Tiempo |
+| --- | --- | --- |
+| Cuenta vacía antes del apply | 12/12 sin restos (EC2, ASG, ALB, RDS, DynamoDB, S3, SSM, CloudFront, SNS, alarmas, VPC) | — |
+| `terraform apply` | `Plan: 73 to add, 0 to change, 0 to destroy` → `Apply complete! Resources: 73 added`, sin errores ni pasos manuales | 10 min 15 s |
+| `deploy-frontend.sh` | Build, sincronización a S3 e invalidación de CloudFront | 38 s |
+| `verify-deployment.sh` | 16/16: ASG 2/2 InService, 2 targets healthy, 2 instancias Online en SSM, target tracking, RDS `available` Single-AZ, 2 tablas `ACTIVE`, 4 alarmas, SNS confirmada, CloudTrail, health profundo, frontend 200, API sin token 401, ALB 200; `plan` estable (sin cambios) | ~1 min |
+| `e2e-test.sh` (1.ª corrida) | 20/22: **`fake.pdf` quedó en `PROCESSING`** (hallazgo, ver abajo) | — |
+| Arreglo + redespliegue del worker | Artefacto nuevo → ASG nuevo azul/verde; **96/96 health 200 durante el reemplazo** | 3 min 42 s |
+| `e2e-test.sh` (3 corridas tras el arreglo + 1 final) | 22/22 en cada una; PDF y PNG → `DONE`, PDF falso → `FAILED`, bitácora de 3 eventos, 404 entre usuarios, 401 sin token; 3 correos de SNS recibidos | ~1 s de procesamiento |
+| `terraform destroy` | `Destroy complete! Resources: 73 destroyed` | 6 min 59 s |
+| Cuenta vacía después del destroy | 12/12 sin restos | — |
+
+### Hallazgo 1: condición de carrera entre workers (corregido en este PR)
+
+Con tres subidas seguidas, los dos workers consultaron el mismo ítem a la vez. Uno lo reclamó y lo marcó `FAILED`; el claim del otro coincidió en el mismo instante y DynamoDB canceló la transacción del ganador con `TransactionConflict` (`fail_transition_failed` en `journalctl`). El worker no reintentaba, así que el documento quedó en `PROCESSING` para siempre. No es lo mismo que `ConditionalCheckFailed` (otro ganó): es un conflicto transitorio que el SDK no reintenta.
+
+Arreglo: el worker reintenta las transiciones canceladas por `TransactionConflict` hasta 5 veces con espera exponencial y jitter (`withConflictRetry`); reintentar es seguro porque las transiciones son condicionales e idempotentes. Verificado en AWS: tras el arreglo hubo 3 `claim_lost` (competencia real entre workers) y 0 `fail_transition_failed`.
+
+### Hallazgo 2: el correo de confirmación de SNS no llegaba
+
+`alert_email` en el `terraform.tfvars` local era una dirección de ejemplo (`@example.com`), así que la confirmación nunca llegó a nadie (en las corridas anteriores las alarmas sí publicaban al tópico, lo que no exige suscripción confirmada). Se corrigió el valor y un `apply` reemplazó solo la suscripción. La suscripción pendiente vieja no se puede borrar: AWS la expira a los 3 días, por eso `verify-deployment.sh` exige al menos una confirmada.
+
+### Versión desplegada
+
+La corrida usó `main` en `93a2209` más el arreglo del worker de este PR. Mientras corría se fusionó #60, cuyo único cambio fuera de `docs/` es un comentario de `scripts/user-data.sh.tftpl`; la infraestructura probada es la misma que la de `main` con este PR.
+
 ## Conclusión
 
 C4 queda **demostrado en la fecha de entrega** (2026-11-13), con la salvedad honesta de que el laboratorio voclabs no ofrece un "vacío real": la limpieza de huérfanos (2 SSM params + 1 OAC) fue parte del ejercicio y está documentada para reproducirla. El procedimiento completo (credenciales → tfvars → package-app → apply → SNS → deploy-frontend → E2E → destroy) vive en `docs/guias/despliegue.md`.
 
+La segunda corrida (cuenta vacía verificada antes y después, 73 recursos creados y destruidos sin pasos manuales salvo confirmar el correo de SNS) cumple el criterio sin salvedades y dejó dos hallazgos corregidos. Para repetirla: `./scripts/verify-deployment.sh limpieza` → `package-app.sh` → `apply` → `deploy-frontend.sh` → confirmar SNS → `verify-deployment.sh` → `e2e-test.sh` → `destroy` → `verify-deployment.sh limpieza`.

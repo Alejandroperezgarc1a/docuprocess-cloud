@@ -73,6 +73,15 @@ Comprueba credenciales y cuenta contra el tfstate (falla antes de escribir si la
 
 ### 2.3 Verificación de extremo a extremo
 
+Verificación automática (solo lectura; termina con código 0 si todo está bien):
+
+```bash
+./scripts/verify-deployment.sh   # ASG 2/2, targets healthy, SSM Online, RDS Single-AZ, tablas, 4 alarmas, SNS confirmada, CloudTrail, health profundo, frontend, 401 sin token
+./scripts/e2e-test.sh            # flujo completo por CloudFront: 2 usuarios, PDF y PNG → DONE, PDF falso → FAILED, bitácora, 404 entre usuarios
+```
+
+Verificación manual equivalente:
+
 1. En navegador: `https://<cloudfront_domain>/` → registro, login.
 2. Subir un PDF/PNG → el estado pasa a `DONE` (páginas/dimensiones/SHA-256 visibles) o `FAILED` si es corrupto.
 3. API directa (sin caché):
@@ -106,6 +115,7 @@ journalctl -u docuprocess-api -u docuprocess-worker -n 100
 
 ```bash
 terraform -chdir=infra destroy   # el provisioner terraform_data vacía los buckets (scripts/empty-bucket.sh)
+./scripts/verify-deployment.sh limpieza   # comprueba que no quede nada del proyecto en la cuenta
 ```
 
 - El estado local conserva referencias a recursos ya inexistentes: borrar `infra/terraform.tfstate*` **solo tras el destroy** y sobre una cuenta limpia.
@@ -122,13 +132,14 @@ terraform -chdir=infra destroy   # el provisioner terraform_data vacía los buck
 | Apply desde "cuenta vacía" falla por recursos sin tag | `voc-cancel-cred` u otro apply abortado dejó huérfanos (buckets, RDS, alarmas no etiquetados) | `terraform plan -refresh=true`; borrar huérfanos; aplicar de nuevo. Estado sano del repo: ~73 add / 0 change / 0 destroy |
 | Alarmas CloudWatch sin correo destino | Suscripción SNS `PendingConfirmation` | Confirmar el correo (una sola vez por cuenta); reenviar confirmación con `aws sns resubscribe` si fue borrada |
 | CloudFront responde **504** durante el relanzamiento | Draining/deregistration del target group tras reemplazo de instancias | Esperar 1–4 min; no re-aplicar en mitad de la demo; verificar `/api/health` en el ALB directamente |
-| El documento queda `PROCESSING` para siempre y el frontend hace polling sin fin | El worker murió tras el claim (OOM, deploy, timeout) — no hay reaper | Resetear el ítem (sin tocar la bitácora, que es append-only): `aws dynamodb update-item --table-name documents --key '{"documentId":{"S":"<id>"}}' --update-expression "SET #s = :pending" --expression-attribute-names '{"#s":"status"}' --expression-attribute-values '{":pending":{"S":"PENDING"}}'` o borrar el ítem y re-subir. Mejor preparado: no matar el worker durante la demo |
+| El documento queda `PROCESSING` para siempre y el frontend hace polling sin fin | El worker murió tras el claim (OOM, deploy, timeout) — no hay reaper. (Hasta C4 también pasaba si dos workers chocaban en el mismo ítem: `fail_transition_failed` con `TransactionConflict` en `journalctl`; corregido, el worker ahora reintenta) | Resetear el ítem (sin tocar la bitácora, que es append-only): `aws dynamodb update-item --table-name documents --key '{"documentId":{"S":"<id>"}}' --update-expression "SET #s = :pending" --expression-attribute-names '{"#s":"status"}' --expression-attribute-values '{":pending":{"S":"PENDING"}}'` o borrar el ítem y re-subir. Mejor preparado: no matar el worker durante la demo |
 | Alta de documento devuelve **503** | Se añadió `dynamodb:TransactWriteItems` a la resource policy (acción inválida) o falta el permiso de ítem | Activar `enable_dynamodb_transactions = false` en `terraform.tfvars` (escritura secuencial con evento de auditoría sin transacción; ver `docs/rds-vs-dynamodb.md`) y reaplicar/reiniciar worker |
 | "Imagen: blank screen" al servir el frontend sin build | Se sirve `frontend/` crudo y `import.meta.env` es undefined | Siempre publicar con `deploy-frontend.sh` (Vite) y testear `dist/` |
 | PUT prefirmado rechazado (403/CORS) | Origen no permitido en CORS del bucket docs, o Content-Type distinto al declarado | Re-aplicar infra (CORS incluye `https://<cloudfront_domain>`); subir con exactamente el `Content-Type` declarado |
 | `db_password` expuesto en el estado local | `terraform.tfstate` del Sandbox | No compartir el archivo; destruir el entorno al cerrar el lab (§3) |
 | `npm test` falla en CI con `amazonlinux:2023` | Cambio en disponibilidad del paquete `nodejs24` en AL2023 | Actualizar el CI al paquete disponible / fijar versión en `ci.yml` |
 | GitHub Actions: trabajo "Secret scan" falla en repo de organización | `gitleaks-action@v2` requiere licencia en orgs | Usar el binario `gitleaks` en vez del action, o secret `GITLEAKS_LICENSE` |
+| No llega el correo de confirmación de SNS | `alert_email` en `terraform.tfvars` es una dirección de ejemplo (`@example.com`) o el correo está en Spam | Poner el correo real del equipo en `alert_email` y `terraform apply` (solo reemplaza la suscripción); la pendiente vieja la expira AWS a los 3 días |
 | `ab`/`load-test.sh`: "falta '$cmd'" | Apache Bench no instalado | Debian/Ubuntu: `apt install apache2-utils`; AL2023/RHEL: `dnf install httpd-tools` |
 
 ## 5. Probar la carga del ASG (A8, opcional pero recomendado)
