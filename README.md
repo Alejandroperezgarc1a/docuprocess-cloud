@@ -118,7 +118,7 @@ terraform -chdir=infra apply
 # Revisar el correo de AWS y confirmar la suscripción de SNS antes de probar las alertas.
 ```
 
-`deploy-frontend.sh` comprueba las credenciales y la cuenta, lee los outputs de B2/B7, genera `frontend/public/config.js`, construye el frontend y publica `frontend/dist/` con cabeceras de caché e invalidación. Falla antes de escribir si el estado de Terraform es de otra cuenta o si B7 no está aplicado. El script hereda `AWS_PROFILE`; en el Sandbox se validó con `AWS_PROFILE=academy` (cuenta `491699813584`). La guía completa y el troubleshooting se completan con A9; las decisiones y la evidencia de B9 están en `docs/informe-b9.md`.
+`deploy-frontend.sh` comprueba las credenciales y la cuenta, lee los outputs de B2/B7, genera `frontend/public/config.js`, construye el frontend y publica `frontend/dist/` con cabeceras de caché e invalidación. Falla antes de escribir si el estado de Terraform es de otra cuenta o si B7 no está aplicado. El script hereda `AWS_PROFILE`; en el Sandbox se validó con `AWS_PROFILE=academy` (cuenta `<AWS_ACCOUNT_ID>`). La guía completa y el troubleshooting se completan con A9; las decisiones y la evidencia de B9 están en `docs/informe-b9.md`.
 
 `package-app.sh` va **antes** de cada `apply` que deba llevar código nuevo: Terraform sube el zip con su hash en el nombre y, si cambió, reemplaza las instancias sin caída del servicio.
 
