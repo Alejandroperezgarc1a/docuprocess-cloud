@@ -10,7 +10,7 @@ import {
   PermanentProcessingError,
 } from './extract.js';
 import { errorFields, type Logger } from './logger.js';
-import { buildPayload } from './notify.js';
+import { buildPayload, buildEmail } from './notify.js';
 import type {
   DocumentItem,
   DocumentResult,
@@ -106,10 +106,12 @@ async function notify(
   item: DocumentItem,
   status: DocumentStatus,
   error?: string,
+  result?: DocumentResult,
 ): Promise<void> {
   const payload = buildPayload(item, status, error);
+  const emailBody = result && status === 'DONE' ? buildEmail(item, status, error, result) : undefined;
   try {
-    await deps.aws.publish(payload);
+    await deps.aws.publish(payload, emailBody);
     deps.logger.info('sns_published', {
       documentId: item.documentId,
       status,
@@ -260,7 +262,7 @@ export async function processItem(
       return true;
     }
 
-    await notify(deps, item, 'DONE');
+    await notify(deps, item, 'DONE', undefined, result);
     deps.logger.info('item_processed', {
       documentId: item.documentId,
       status: 'DONE',

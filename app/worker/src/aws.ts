@@ -15,7 +15,7 @@ import {
 import type { Readable } from 'node:stream';
 import type { WorkerConfig } from './config.js';
 import type { Logger } from './logger.js';
-import { buildSubject } from './notify.js';
+import { buildPayload, buildSubject, buildEmail, formatBytes } from './notify.js';
 import type {
   DocumentEvent,
   DocumentItem,
@@ -50,7 +50,7 @@ export interface AwsService {
   complete(item: DocumentItem, result: DocumentResult, now: string): Promise<boolean>;
   fail(item: DocumentItem, error: string, now: string): Promise<boolean>;
   failPending(item: DocumentItem, error: string, now: string): Promise<boolean>;
-  publish(payload: NotificationPayload): Promise<void>;
+  publish(payload: NotificationPayload, emailBody?: string): Promise<void>;
 }
 
 export function errorName(error: unknown): string {
@@ -60,7 +60,7 @@ export function errorName(error: unknown): string {
   return 'UnknownError';
 }
 
-export function httpStatusCode(error: unknown): number | undefined {
+function httpStatusCode(error: unknown): number | undefined {
   if (typeof error !== 'object' || error === null) {
     return undefined;
   }
@@ -354,7 +354,7 @@ export function createAwsService(
       );
     },
 
-    async publish(payload: NotificationPayload): Promise<void> {
+    async publish(payload: NotificationPayload, emailBody?: string): Promise<void> {
       if (config.snsTopicArn === '') {
         logger.info('sns_skipped', { payload });
         return;
@@ -374,7 +374,11 @@ export function createAwsService(
             new PublishCommand({
               TopicArn: config.snsTopicArn,
               Subject: subject,
-              Message: message,
+              MessageStructure: 'json',
+              Message: JSON.stringify({
+                default: message,
+                email: emailBody || '',
+              }),
             }),
           );
           return;

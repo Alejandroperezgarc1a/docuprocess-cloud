@@ -1,5 +1,6 @@
 import type {
   DocumentItem,
+  DocumentResult,
   DocumentStatus,
   NotificationPayload,
 } from './types.js';
@@ -49,3 +50,98 @@ export function buildPayload(
     ...(status === 'FAILED' && error !== undefined ? { error } : {}),
   };
 }
+
+/** Plantilla de correo para la suscripción de SNS. */
+export function buildEmail(
+  item: DocumentItem,
+  status: DocumentStatus,
+  error?: string,
+  result?: DocumentResult,
+): string {
+  const fecha = new Date().toLocaleDateString('es-CO', {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+  const hora = new Date().toLocaleTimeString('es-CO', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const tamano = result?.sizeBytes
+    ? formatBytes(result.sizeBytes)
+    : error
+      ? '—'
+      : item.filename.includes('.') && !result
+        ? '—'
+        : '—';
+
+  const tipo = result?.mimeType ?? item.contentType ?? 'application/octet-stream';
+  const sha256 = result?.sha256 ?? '—';
+  const id = item.documentId;
+  const pid = item.documentId;
+
+  const lines = [
+    'DOCUPROCESS CLOUD',
+    '──────────────────────────────────────',
+    '',
+
+    status === 'DONE'
+      ? `Tu documento está listo`
+      : status === 'FAILED'
+        ? `No pudimos procesar tu documento`
+        : '',
+
+    '',
+    `  Archivo:    ${item.filename}`,
+    `  Estado:     ${status}`,
+
+    ...(result?.mimeType
+      ? [`  Tipo:       ${tipo}`]
+      : []),
+
+    ...(result?.sizeBytes
+      ? [`  Tamaño:     ${formatBytes(result.sizeBytes)}`]
+      : [`  Tamaño:     ${tamano}`]),
+
+    ...(result?.pages
+      ? [`  Páginas:    ${result.pages}`]
+      : [
+          ...(result?.width && result?.height
+            ? [`  Dimensiones: ${result.width} × ${result.height} px`]
+            : []),
+        ]),
+
+    `  SHA-256:    ${sha256}`,
+    `  ID:         ${pid}`,
+
+    ...(status === 'DONE'
+      ? [`  Fecha:      ${fecha}, ${hora}`]
+      : status === 'FAILED'
+        ? [
+            '',
+            '  Qué puedes hacer:',
+            `    • Vuelve a subir el archivo`,
+            `    • Corrige el formato`,
+          ]
+        : []),
+
+    '',
+    '──────────────────────────────────────',
+    'DocuProcess Cloud',
+    'Este correo se envió automáticamente.',
+  ];
+
+  return lines.join('\n');
+}
+
+/** Formatea bytes a `1.2 MB` (es-CO, 1 decimal). */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
+}
+
+export { formatBytes };

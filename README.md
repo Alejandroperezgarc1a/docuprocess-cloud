@@ -188,6 +188,12 @@ npm run dev
 El frontend queda en `http://localhost:5500`. Vite reenvía `/api` a
 `http://localhost:8000`, así que no hace falta CORS en desarrollo.
 
+La interfaz incluye subida múltiple con progreso, cancelar y reintentar; búsqueda,
+filtros por estado/tipo y orden; detalle en diálogo con enlace directo y línea de
+tiempo de auditoría; tema claro/oscuro/sistema; toasts y aviso de sin conexión; y
+atajos de teclado (`/` para buscar, `u` para elegir archivo). El código se organiza
+en `app.js` (orquestación) y `src/` (`api.js`, `upload.js`, `ui.js`).
+
 `config.js` es configuración de runtime: se genera desde `config.example.js` con
 `apiBaseUrl: ""` (mismo origen) y está ignorado por git. En desarrollo, si defines
 `VITE_API_BASE_URL`, esa variable tiene prioridad; sin ella se usa el proxy de Vite.

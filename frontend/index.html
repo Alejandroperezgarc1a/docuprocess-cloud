@@ -20,11 +20,18 @@
       </span>
       <span class="brand-name">DocuProcess <strong>Cloud</strong></span>
     </div>
-    <div id="session-bar" class="session-bar" hidden>
-      <span id="session-email" class="session-email"></span>
-      <button id="logout-button" class="btn btn-quiet btn-small" type="button">Cerrar sesión</button>
+    <div class="header-actions">
+      <button id="theme-toggle" class="icon-button theme-toggle" type="button" aria-label="Cambiar tema"></button>
+      <div id="session-bar" class="session-bar" hidden>
+        <span id="session-email" class="session-email"></span>
+        <button id="logout-button" class="btn btn-quiet btn-small" type="button">Cerrar sesión</button>
+      </div>
     </div>
   </header>
+
+  <div id="offline-banner" class="offline-banner" role="status" hidden>
+    Sin conexión. Puedes seguir viendo la información; las acciones se reintentarán al volver.
+  </div>
 
   <main class="page">
     <section id="auth-view" class="auth" aria-labelledby="auth-title">
@@ -58,7 +65,17 @@
             </div>
             <div class="field">
               <label for="login-password">Contraseña</label>
-              <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Tu contraseña" required>
+              <div class="password-field">
+                <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Tu contraseña" required>
+                <button class="password-toggle" type="button" data-password-toggle="login-password" aria-label="Mostrar contraseña" aria-pressed="false">
+                  <span class="eye-open" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+                  </span>
+                  <span class="eye-off" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a17.4 17.4 0 0 1-3 3.7M6.6 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.8 10.8 0 0 0 4.3-.9"/></svg>
+                  </span>
+                </button>
+              </div>
             </div>
             <p id="login-message" class="message" role="alert" hidden></p>
             <button id="login-submit" class="btn btn-primary btn-block" type="submit">Entrar</button>
@@ -75,8 +92,35 @@
             </div>
             <div class="field">
               <label for="register-password">Contraseña</label>
-              <input id="register-password" name="password" type="password" autocomplete="new-password" placeholder="Mínimo 8 caracteres" minlength="8" required>
-              <p class="hint">Usa al menos 8 caracteres.</p>
+              <div class="password-field">
+                <input id="register-password" name="password" type="password" autocomplete="new-password" placeholder="Mínimo 8 caracteres" minlength="8" required>
+                <button class="password-toggle" type="button" data-password-toggle="register-password" aria-label="Mostrar contraseña" aria-pressed="false">
+                  <span class="eye-open" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+                  </span>
+                  <span class="eye-off" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a17.4 17.4 0 0 1-3 3.7M6.6 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.8 10.8 0 0 0 4.3-.9"/></svg>
+                  </span>
+                </button>
+              </div>
+              <div id="register-strength" class="strength" hidden>
+                <div class="strength-track" aria-hidden="true"><span id="register-strength-fill"></span></div>
+                <p id="register-strength-text" class="hint" aria-live="polite"></p>
+              </div>
+            </div>
+            <div class="field">
+              <label for="register-password-confirm">Confirmar contraseña</label>
+              <div class="password-field">
+                <input id="register-password-confirm" name="passwordConfirm" type="password" autocomplete="new-password" placeholder="Repite la contraseña" minlength="8" required>
+                <button class="password-toggle" type="button" data-password-toggle="register-password-confirm" aria-label="Mostrar contraseña" aria-pressed="false">
+                  <span class="eye-open" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+                  </span>
+                  <span class="eye-off" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 18 18"/><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a17.4 17.4 0 0 1-3 3.7M6.6 6.7C3.7 8.5 2 12 2 12s3.5 6 10 6a10.8 10.8 0 0 0 4.3-.9"/></svg>
+                  </span>
+                </button>
+              </div>
             </div>
             <p id="register-message" class="message" role="alert" hidden></p>
             <button id="register-submit" class="btn btn-primary btn-block" type="submit">Crear cuenta</button>
@@ -91,6 +135,7 @@
           <p class="eyebrow">Panel</p>
           <h1 id="app-title" tabindex="-1">Mis documentos</h1>
           <p class="section-lead">Sube archivos y sigue su procesamiento sin recargar la página.</p>
+          <p id="last-updated" class="last-updated" aria-live="polite"></p>
         </div>
         <button id="refresh-button" class="btn btn-secondary" type="button">Refrescar</button>
       </div>
@@ -110,14 +155,21 @@
                   <path d="M12 16V4M7 9l5-5 5 5M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
                 </svg>
               </span>
-              <span class="dropzone-title">Arrastra tu archivo aquí</span>
-              <span class="dropzone-sub">o haz clic para elegirlo</span>
-              <input id="file-input" class="sr-only" type="file" accept=".pdf,.png,.jpg,.jpeg,.txt,application/pdf,image/png,image/jpeg,text/plain">
+              <span class="dropzone-title">Arrastra tus archivos aquí</span>
+              <span class="dropzone-sub">o haz clic para elegirlos</span>
+              <input id="file-input" class="sr-only" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.txt,application/pdf,image/png,image/jpeg,text/plain">
             </label>
-            <p id="file-meta" class="file-meta" hidden></p>
-            <p class="hint">PDF, PNG, JPG o TXT · máximo 10 MB.</p>
+            <p class="hint">PDF, PNG, JPG o TXT · máximo 10 MB por archivo · puedes seleccionar varios.</p>
             <p id="upload-message" class="message" role="status" hidden></p>
-            <button id="upload-submit" class="btn btn-primary btn-block" type="submit" disabled>Subir documento</button>
+            <button id="upload-submit" class="btn btn-primary btn-block" type="submit">Añadir a la cola</button>
+
+            <div id="upload-queue-wrap" class="upload-queue-wrap" hidden>
+              <div class="queue-head">
+                <span id="queue-title" class="queue-title">Cola de subida</span>
+                <button id="queue-clear" class="btn btn-quiet btn-small" type="button">Limpiar completados</button>
+              </div>
+              <ul id="upload-queue" class="upload-queue" aria-live="polite"></ul>
+            </div>
           </form>
         </section>
 
@@ -125,10 +177,46 @@
           <div class="card-head card-head--split">
             <div>
               <h2 id="documents-title">Historial</h2>
+              <p id="documents-count" class="card-sub"></p>
               <p id="list-status" class="card-sub" aria-live="polite"></p>
             </div>
           </div>
+
+          <div class="documents-toolbar" role="search" aria-label="Buscar y filtrar documentos">
+            <label class="search-field" for="search-input">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+              </svg>
+              <span class="sr-only">Buscar documentos por nombre</span>
+              <input id="search-input" type="search" placeholder="Buscar por nombre…" autocomplete="off">
+            </label>
+            <select id="status-filter" aria-label="Filtrar por estado">
+              <option value="all">Todos los estados</option>
+              <option value="PENDING">Pendiente</option>
+              <option value="PROCESSING">Procesando</option>
+              <option value="DONE">Listo</option>
+              <option value="FAILED">Fallido</option>
+            </select>
+            <select id="type-filter" aria-label="Filtrar por tipo">
+              <option value="all">Todos los tipos</option>
+              <option value="pdf">PDF</option>
+              <option value="png">PNG</option>
+              <option value="jpg">JPG</option>
+              <option value="txt">TXT</option>
+            </select>
+            <select id="sort-select" aria-label="Ordenar documentos">
+              <option value="date-desc">Más recientes</option>
+              <option value="date-asc">Más antiguos</option>
+              <option value="name-asc">Nombre A-Z</option>
+              <option value="name-desc">Nombre Z-A</option>
+              <option value="size-desc">Tamaño mayor</option>
+              <option value="size-asc">Tamaño menor</option>
+            </select>
+            <button id="clear-filters" class="btn btn-quiet btn-small" type="button" hidden>Limpiar</button>
+          </div>
+
           <p id="list-message" class="message" role="alert" hidden></p>
+          <button id="list-retry" class="btn btn-secondary btn-small list-retry" type="button" hidden>Reintentar</button>
           <ul id="document-list" class="document-list"></ul>
           <div id="empty-state" class="empty-state" hidden>
             <span aria-hidden="true">
@@ -137,28 +225,41 @@
                 <path d="M14 3v5h5M9 13h6M9 17h4"/>
               </svg>
             </span>
-            <p><strong>Aún no hay documentos.</strong><br>Sube el primero para empezar.</p>
+            <p><strong id="empty-title">Aún no hay documentos.</strong><br><span id="empty-text">Sube el primero para empezar.</span></p>
+            <button id="empty-action" class="btn btn-secondary btn-small" type="button" hidden>Limpiar filtros</button>
           </div>
         </section>
       </div>
-
-      <section id="detail-card" class="card detail-card" aria-labelledby="detail-title" hidden>
-        <div class="card-head card-head--split">
-          <h2 id="detail-title" tabindex="-1">Detalle del documento</h2>
-          <button id="detail-close" class="icon-button" type="button" aria-label="Cerrar detalle">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <path d="M6 6l12 12M18 6L6 18"/>
-            </svg>
-          </button>
-        </div>
-        <div id="detail-content" class="detail-content"></div>
-      </section>
     </section>
   </main>
+
+  <dialog id="detail-card" class="detail-dialog" aria-labelledby="detail-title" aria-describedby="detail-summary">
+    <div class="detail-dialog-panel">
+      <header class="detail-dialog-head">
+        <div class="detail-dialog-titles">
+          <p class="eyebrow">Documento</p>
+          <h2 id="detail-title" tabindex="-1">Detalle del documento</h2>
+          <p id="detail-summary" class="card-sub"></p>
+        </div>
+        <button id="detail-close" class="icon-button" type="button" aria-label="Cerrar detalle">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M6 6l12 12M18 6L6 18"/>
+          </svg>
+        </button>
+      </header>
+      <div id="detail-content" class="detail-content"></div>
+      <section id="timeline-section" class="timeline-section">
+        <h3 id="timeline-title" class="timeline-title">Actividad</h3>
+        <div id="timeline" class="timeline"></div>
+      </section>
+    </div>
+  </dialog>
 
   <footer class="site-footer">
     <p>DocuProcess Cloud · Proyecto final de Infraestructura III</p>
   </footer>
+
+  <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="false"></div>
 
   <script>window.DOCUPROCESS_CONFIG = window.DOCUPROCESS_CONFIG || {};</script>
   <script src="/config.js"></script>
