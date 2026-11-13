@@ -232,7 +232,7 @@ variable "jwt_secret" {
 }
 
 # -----------------------------------------------------------------------------
-# Datos y notificaciones (B2, B3, B4, B9)
+# Datos y notificaciones (B2, B3, B4, B10)
 # -----------------------------------------------------------------------------
 
 variable "cors_allowed_origins" {

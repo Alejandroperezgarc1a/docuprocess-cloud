@@ -4,7 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "config": "node scripts/generate-config.mjs",
+    "predev": "npm run config",
     "dev": "vite",
+    "prebuild": "npm run config",
     "build": "vite build",
     "preview": "vite preview"
   },

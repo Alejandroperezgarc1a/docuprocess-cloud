@@ -77,7 +77,7 @@ infra/              módulo raíz de Terraform
 infra/modules/      network, compute, rds, storage, dynamodb, sns, cdn, monitoring
 app/api/            API REST en Node.js + TypeScript (src/, tests/)
 app/worker/         worker de procesamiento asíncrono en Node.js + TypeScript
-frontend/           sitio estático
+frontend/           sitio estático construido con Vite
 scripts/            userData, empaquetado, publicación del frontend y prueba de carga
 docs/               arquitectura, RDS vs. DynamoDB, trazabilidad y guía de despliegue
 ```
@@ -114,8 +114,11 @@ cp infra/terraform.tfvars.example infra/terraform.tfvars   # completar alert_ema
 ./scripts/package-app.sh                                    # genera dist/docuprocess-app.zip (Node 24 + zip)
 terraform -chdir=infra init
 terraform -chdir=infra apply
+./scripts/deploy-frontend.sh                                # publica frontend/dist y refresca CloudFront
 # Revisar el correo de AWS y confirmar la suscripción de SNS antes de probar las alertas.
 ```
+
+`deploy-frontend.sh` comprueba las credenciales y la cuenta, lee los outputs de B2/B7, genera `frontend/public/config.js`, construye el frontend y publica `frontend/dist/` con cabeceras de caché e invalidación. Falla antes de escribir si el estado de Terraform es de otra cuenta o si B7 no está aplicado. El script hereda `AWS_PROFILE`; en el Sandbox se validó con `AWS_PROFILE=academy` (cuenta `491699813584`). La guía completa y el troubleshooting se completan con A9; las decisiones y la evidencia de B9 están en `docs/informe-b9.md`.
 
 `package-app.sh` va **antes** de cada `apply` que deba llevar código nuevo: Terraform sube el zip con su hash en el nombre y, si cambió, reemplaza las instancias sin caída del servicio.
 
@@ -171,16 +174,21 @@ npm run dev
 El frontend queda en `http://localhost:5500`. Vite reenvía `/api` a
 `http://localhost:8000`, así que no hace falta CORS en desarrollo.
 
+`config.js` es configuración de runtime: se genera desde `config.example.js` con
+`apiBaseUrl: ""` (mismo origen) y está ignorado por git. En desarrollo, si defines
+`VITE_API_BASE_URL`, esa variable tiene prioridad; sin ella se usa el proxy de Vite.
+
 Para probar el build de producción:
 
 ```bash
 cd frontend
 npm ci
-npm run build      # genera frontend/dist/
+npm run build      # genera frontend/dist/ (incluye config.js y assets con hash)
 npm run preview    # sirve dist/ en http://127.0.0.1:4173
 ```
 
-El despliegue debe subir `frontend/dist/`, no el código fuente.
+El despliegue debe subir `frontend/dist/`, no el código fuente. `./scripts/deploy-frontend.sh`
+hace el build, publica en S3 y refresca CloudFront.
 
 #### CORS del bucket de documentos
 

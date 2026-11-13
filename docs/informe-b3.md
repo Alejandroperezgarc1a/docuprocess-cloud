@@ -102,7 +102,7 @@ repitió un `apply` aislado solo con B3.
 1. Repetir un `apply` aislado de B3 si se quiere evidencia separada de la integración; el Sandbox
    ya validó las políticas, PITR y el flujo completo con las ramas integradas.
 2. Implementar el worker (B5/B6) para producir transiciones `PROCESSING/DONE/FAILED` en la bitácora.
-3. B2/B4/B6/B9/B10: storage, SNS, alarmas y diagrama completo.
+3. B2/B4/B6/B10: storage, SNS, alarmas y diagrama completo.
 4. Prueba de carga (A8) y guía de despliegue (A9).
 
 ## 7. Commits sugeridos
