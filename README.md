@@ -100,7 +100,7 @@ El tablero de [GitHub Projects](https://github.com/users/Alejandroperezgarc1a/pr
 | 3 | Jue 12 – Vie 13 | Notificaciones, CDN y monitoreo | B5 (cierre), A4, B7, B10 |
 | 4 | Jue 12 – Vie 13 | Integración y cierre | B9, C3, A8, A9, B1 (documentación), C4 |
 
-La semana del 2 al 6 de noviembre queda limitada a las fundaciones. B2, B3, B6, B5, B7, B8, A3, A4 y A5 se movieron a la semana del 9 para no concentrar tareas. El cierre técnico estimado es el **viernes 13 de noviembre**; la evidencia de la prueba de carga (A8) y la pasada desde cuenta limpia (C4) se cierran el **13 de noviembre** (entrega final).
+La semana del 2 al 6 de noviembre quedó limitada a las fundaciones. B2, B3, B6, B5, B7, B8, A3, A4 y A5 se movieron a la semana del 9 para no concentrar tareas. El cierre técnico fue el **viernes 13 de noviembre de 2026**; la evidencia de la prueba de carga (A8) y el despliegue en vivo desde `main` (C4) quedaron cerrados ese día (entrega final).
 
 ## Cómo desplegar
 
@@ -124,7 +124,7 @@ La prueba de carga del ASG está en `scripts/load-test.sh` (sección 5 de la gu�
 
 ## Cierre y presentación
 
-La guía de presentación con el mapeo rúbrica → evidencia está en [`docs/sustentacion.md`](docs/sustentacion.md). El cierre del monitoreo está en [`docs/informe-b10.md`](docs/informe-b10.md) y el historial requisito → evidencia del proyecto en [`docs/trazabilidad.md`](docs/trazabilidad.md).
+La guía de presentación con el mapeo rúbrica → evidencia está en [`docs/sustentacion.md`](docs/sustentacion.md). El cierre del monitoreo está en [`docs/informe-b10.md`](docs/informe-b10.md) y el historial requisito → evidencia del proyecto en [`docs/trazabilidad.md`](docs/trazabilidad.md). A8 (escalado 2→4 bajo carga) y B10 (alarmas → SNS y `LookupEvents`) quedaron en estado **Verificado** el 13 de noviembre de 2026.
 
 ## Desarrollo local
 

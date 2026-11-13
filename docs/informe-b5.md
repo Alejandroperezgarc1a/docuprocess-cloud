@@ -81,10 +81,13 @@ reproducibles:
 - Los recursos temporales (bucket, tópico y DynamoDB Local) se eliminaron al terminar.
 
 **Límites de la validación:** la entrega de correo no se pudo comprobar porque la suscripción a
-`ingesoftv@gmail.com` sigue pendiente de confirmación (y el Sandbox deniega `sqs:CreateQueue`
+`ingesoftv@gmail.com` seguía pendiente de confirmación (y el Sandbox deniega `sqs:CreateQueue`
 para verificar SNS→SQS). Tampoco se probaron `document_events`/`TransactWriteItems` contra
 DynamoDB de AWS ni el cableado de `module.sns.topic_arn`, porque B3 y B6 aún no están fusionados
 en la rama de B5.
+
+> **Actualización 2026-11-13:** la suscripción se confirmó y B10 verificó CloudWatch → SNS con la
+> acción `Successfully executed action … docuprocess-dev-alerts` (ver `docs/informe-b10.md`).
 
 ## Pendientes de integración
 

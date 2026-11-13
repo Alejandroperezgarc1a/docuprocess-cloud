@@ -1,6 +1,6 @@
 # Informe C4 — Despliegue desde cero en cuenta limpia
 
-> **Estado (2026-11-13 ~17:00–18:00 UTC): ejecutado.** El despliegue desde cero se realizó en la sesión de entrega en la cuenta voclabs (491699813584), el mismo día de la entrega final. Este documento refleja lo ocurrido, sin adornos.
+> **Estado (2026-11-13 ~17:00–18:00 UTC): ejecutado.** Despliegue en vivo desde `main` en la sesión de entrega, cuenta voclabs (491699813584), el mismo día de la entrega final (13 de noviembre de 2026). Este documento refleja lo ocurrido, sin adornos.
 
 ## Objetivo
 
@@ -32,7 +32,7 @@ El laboratorio **no estaba limpio**: al reutilizarlo, conservó recursos de un d
 | Buckets S3 | `docuprocess-dev-{docs,frontend,artifacts}-77d1730d` |
 | RDS `docuprocess-dev-mysql` | `available` (reutilizado; db.t3.micro Single-AZ) |
 | DynamoDB | `documents`, `document_events` activas |
-| SNS `docuprocess-dev-alerts` | suscripción `ingesoftv@gmail.com` = **PendingConfirmation** |
+| SNS `docuprocess-dev-alerts` | suscripción `ingesoftv@gmail.com` = **PendingConfirmation** al desplegar; confirmada después (13-nov, ver `docs/informe-b10.md`) |
 | CloudTrail | modo `event-history` (sin trails; documentado) |
 | Alarmas (4) | todas **OK**, 1 acción hacia SNS |
 
@@ -46,8 +46,9 @@ El laboratorio **no estaba limpio**: al reutilizarlo, conservó recursos de un d
 ## Notas de la sesión
 
 - Las APIs de lectura **sí funcionaron** en esta sesión (a diferencia de la sesión previa temprano ese mismo día, que vio denegaciones SCP).
+- Los IDs de esta sección (VPC, buckets, CloudFront) corresponden a este despliegue final; las sesiones anteriores del mismo día (C3/B9) usaron otros IDs.
 - El RDS sobrevivió al reset del lab: no es un "desde cero" de datos, pero sí de infraestructura de aplicación/edge/alarma.
-- La suscripción SNS nunca fue confirmada en esta cuenta nueva; las alertas no llegarán hasta confirmar el correo (pendiente del equipo).
+- La suscripción SNS quedó `PendingConfirmation` al desplegar; se confirmó el buzón después ese mismo día (13-nov), así que las alertas ya se entregan (ver `docs/informe-b10.md`).
 - `terraform destroy` no se ejecutó (el stack se conserva para la defensa/demo).
 
 ## Conclusión

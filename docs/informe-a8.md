@@ -1,6 +1,6 @@
 # Informe A8 — Prueba de carga y evidencia del escalado del ASG
 
-> **Estado (2026-11-13): Verificado.** El escalado del ASG bajo carga está demostrado con evidencia real en **dos sesiones del Sandbox de entrega** (la de la mañana, con la pila #50–#52, y la de la tarde, con el despliegue desde cero `apply 73`). Los datos provienen de `logs/run.log`/`asg.txt`/`ab.txt` (corrida del 13-nov) y del informe de ejecución de la prueba del 11-nov (fix `keepAliveTimeout = 65000`, merge en PR #45). En algunas sesiones del laboratorio las APIs de lectura llegan a estar denegadas por SCP; cuando eso ocurra, usar la consola (sección «Cómo repetir»).
+> **Estado (2026-11-13): Verificado.** A8 se entregó en el PR #44 (mergeado) y cerró la issue #20. El escalado del ASG bajo carga está demostrado con evidencia real en **dos sesiones del Sandbox de entrega** (la de la mañana, con la pila #50–#52, y la de la tarde, con el despliegue desde cero `apply 73`). Los datos provienen de `logs/run.log`/`asg.txt`/`ab.txt` (corrida del 13-nov) y del informe de ejecución de la prueba del 11-nov (fix `keepAliveTimeout = 65000`, merge en PR #45). En algunas sesiones del laboratorio las APIs de lectura llegan a estar denegadas por SCP; cuando eso ocurra, usar la consola (sección «Cómo repetir»).
 
 ## Objetivo (enunciado §10)
 
@@ -71,4 +71,4 @@ El 13-nov se hizo además un *drill* de tolerancia a fallos: un `terminate-insta
 
 - **Implementación**: completa y revisada (script, policy target tracking, alarmas). ✅
 - **Evidencia viva**: **obtenida y repetida** — escalado real 2→4 en dos ejecuciones (11-nov y 13-nov); la del 13-nov detalla rampa CPU 98–99 % (+162 s), escalado a los +333 s, 5848 requests, 4 no-2xx transitorios. ✅
-- **Pendiente menor**: scale-in automático 4→2 (~15 min de CPU baja) y, opcionalmente, captura de la alarma en estado `ALARM` durante la defensa.
+- **Observación (no afecta el estado)**: el scale-in automático 4→2 tarda ~15 min de CPU baja; opcionalmente, capturar la alarma en estado `ALARM` durante la defensa.

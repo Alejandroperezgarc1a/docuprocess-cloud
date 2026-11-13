@@ -50,7 +50,7 @@ cp infra/terraform.tfvars.example infra/terraform.tfvars
 
 ./scripts/package-app.sh           # Node ci + build → dist/docuprocess-app.zip (determinista)
 terraform -chdir=infra init
-terraform -chdir=infra apply       # ~68 recursos; la primera vez crea red, S3, RDS, DDB, SNS, EC2/ASG, CF, CloudWatch
+terraform -chdir=infra apply       # ~73 recursos; la primera vez crea red, S3, RDS, DDB, SNS, EC2/ASG, CF, CloudWatch
 ```
 
 Notas del `apply`:
@@ -119,7 +119,7 @@ terraform -chdir=infra destroy   # el provisioner terraform_data vacía los buck
 | `InvalidClientTokenId` / `ExpiredToken` en cualquier paso | Sesión del lab expirada o `voc-cancel-cred` a mitad | Abrir el lab de nuevo → re-copiar credenciales → re-`export AWS_PROFILE=academy`; `terraform plan -refresh=true` y reaplicar (idempotente) |
 | Precondición `dist/docuprocess-app.zip` no existe | Se saltó `package-app.sh` | `./scripts/package-app.sh` y re-`apply` |
 | `ParameterAlreadyExists` en `aws_ssm_parameter.db_password` / `jwt_secret` | Despliegue previo en la misma cuenta dejó los parámetros | `aws ssm delete-parameter --name /docuprocess-dev/db_password` (y `jwt_secret`) o `terraform import`; nunca `overwrite` |
-| Apply desde "cuenta vacía" falla por recursos sin tag | `voc-cancel-cred` u otro apply abortado dejó huérfanos (buckets, RDS, alarmas no etiquetados) | `terraform plan -refresh=true`; borrar huérfanos; aplicar de nuevo. Estado sano del repo: 68 add / 0 change / 0 destroy |
+| Apply desde "cuenta vacía" falla por recursos sin tag | `voc-cancel-cred` u otro apply abortado dejó huérfanos (buckets, RDS, alarmas no etiquetados) | `terraform plan -refresh=true`; borrar huérfanos; aplicar de nuevo. Estado sano del repo: ~73 add / 0 change / 0 destroy |
 | Alarmas CloudWatch sin correo destino | Suscripción SNS `PendingConfirmation` | Confirmar el correo (una sola vez por cuenta); reenviar confirmación con `aws sns resubscribe` si fue borrada |
 | CloudFront responde **504** durante el relanzamiento | Draining/deregistration del target group tras reemplazo de instancias | Esperar 1–4 min; no re-aplicar en mitad de la demo; verificar `/api/health` en el ALB directamente |
 | El documento queda `PROCESSING` para siempre y el frontend hace polling sin fin | El worker murió tras el claim (OOM, deploy, timeout) — no hay reaper | Resetear el ítem (sin tocar la bitácora, que es append-only): `aws dynamodb update-item --table-name documents --key '{"documentId":{"S":"<id>"}}' --update-expression "SET #s = :pending" --expression-attribute-names '{"#s":"status"}' --expression-attribute-values '{":pending":{"S":"PENDING"}}'` o borrar el ítem y re-subir. Mejor preparado: no matar el worker durante la demo |

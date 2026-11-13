@@ -1,6 +1,6 @@
 # Informe B10 — Monitoreo y avisos (CloudWatch + SNS + CloudTrail)
 
-> **Estado (2026-11-13): Verificado.** El módulo `monitoring` está implementado, cableado y en `main` (merge vía PR #51). La verificación en vivo se realizó en **dos sesiones del Sandbox de entrega** (mañana con la pila #50–#52; tarde, despliegue desde cero): las 4 alarmas se crearon, el historial de la alarma muestra la ejecución de la acción hacia el SNS, y `verify-cloudtrail.sh` devolvió eventos (es decir, `cloudtrail:LookupEvents` funciona). Si en alguna sesión las APIs de lectura llegan a estar denegadas por SCP (intermitente), usar la consola — ver sección «Errores literales de una sesión previa».
+> **Estado (2026-11-13): Verificado.** El módulo `monitoring` está implementado, cableado y en `main` (merge vía PR #51). La verificación en vivo se realizó en **dos sesiones del Sandbox de entrega** (mañana con la pila #50–#52; tarde, despliegue desde cero): las 4 alarmas se crearon, el historial de la alarma muestra la ejecución de la acción hacia el SNS, y `verify-cloudtrail.sh` devolvió eventos (es decir, `cloudtrail:LookupEvents` funciona). Si en alguna sesión las APIs de lectura llegan a estar denegadas por SCP, usar la consola (ver «Nota sobre el Sandbox»).
 
 ## Objetivo de B10
 
@@ -49,7 +49,7 @@ En la sesión de despliegue desde cero de la entrega, **las APIs de lectura sí 
 - Vía CloudFront: `GET /api/health` → 200 y `GET /api/ready` → 200.
 - `aws cloudtrail` sin trails (modo `event-history` por defecto): `verify-cloudtrail.sh` documenta el historial de 90 días; el Sandbox deniega `cloudtrail:CreateTrail`.
 
-Historial: la sesión previa (misma fecha, temprano) sí vio denegadas estas APIs (errores literales conservados más abajo); la sesión final de la entrega no las denegó. Por eso este informe ahora refleja evidencia viva, no solo estado de código.
+Historial: la sesión previa (misma fecha, temprano) sí vio denegadas estas APIs; la sesión final de la entrega no las denegó. Por eso este informe refleja evidencia viva, no solo estado de código.
 
 ## Cómo cerrar la evidencia de B10 en la presentación (paso a paso)
 
@@ -63,20 +63,9 @@ En la sesión del Sandbox del día / en consola AWS:
 
 En cualquiera de los dos casos, actualizar `docs/trazabilidad.md` (filas 9 y 10) y enlazar capturas **redacted** (sin IDs de cuenta/recursos) en esta misma sección.
 
-## Errores literales de una sesión previa con SCP (referencia histórica)
+## Nota sobre el Sandbox
 
-> Contexto: en **alguna** sesión del laboratorio las APIs de lectura estuvieron denegadas por SCP (errores literales abajo). En las sesiones de entrega del 13-nov (mañana y tarde) funcionaron. Si vuelve a pasar, usar la consola.
-
-| Comando | Error (literal) |
-| --- | --- |
-| `aws autoscaling describe-auto-scaling-groups` | `AccessDenied ... because no identity-based policy allows the autoscaling:DescribeAutoScalingGroups action` |
-| `aws autoscaling describe-scaling-activities` | `AccessDenied ... autoscaling:DescribeScalingActivities` |
-| `aws cloudwatch describe-alarms` | `AccessDenied ... cloudwatch:DescribeAlarms ... with an explicit deny in a service control policy` |
-| `aws cloudwatch get-metric-statistics` | `AccessDenied ... cloudwatch:GetMetricStatistics with an explicit deny in a service control policy` |
-| `aws cloudtrail lookup-events` | `AccessDeniedException ... cloudtrail:LookupEvents with an explicit deny in a service control policy` |
-| `aws sns list-topics` | `AuthorizationError ... SNS:ListTopics ... explicit deny in a service control policy` |
-| `aws ec2 describe-instances` | `UnauthorizedOperation ... ec2:DescribeInstances with an explicit deny in a service control policy` |
-| `aws elbv2 describe-target-health` | `AccessDenied ... elasticloadbalancing:DescribeTargetHealth` |
+En algunas sesiones del laboratorio las APIs de lectura (`Describe*`, `GetMetricStatistics`, `LookupEvents`) pueden estar denegadas por una SCP; en ese caso, verificar desde la consola. En las sesiones de entrega del 13-nov (mañana y tarde) las APIs respondieron y la evidencia se capturó con CLI.
 
 ## Limitaciones del Sandbox (ya documentadas)
 
@@ -89,5 +78,5 @@ En cualquiera de los dos casos, actualizar `docs/trazabilidad.md` (filas 9 y 10)
 - **Verificación viva**: **obtenida y repetida** — mañana: alarmas con acción `Successfully executed action … docuprocess-dev-alerts` y `LookupEvents` con eventos; tarde: 4 alarmas `OK` con 1 acción SNS, ASG 2/2 → 4/4 bajo carga, TG healthy, health/ready 200, tablas activas. ✅
 - **SNS**: suscripción `ingesoftv@gmail.com` **confirmada** por el usuario el 13-nov — las alertas ya se entregan. ✅
 - **Trazabilidad**: filas 9 y 10 actualizadas a `Verificado` con la fecha 2026-11-13. ✅
-- **Pendiente para la defensa** (opcional): demo de alarma en estado `ALARM` (bajar umbral de `docuprocess-dev-ec2-cpu-high` a 1 %, esperar 2 períodos, restaurar) o capturas de la consola; enlazarlas aquí con IDs redactados.
+- **Opcional para la defensa**: demo de alarma en estado `ALARM` (bajar umbral de `docuprocess-dev-ec2-cpu-high` a 1 %, esperar 2 períodos, restaurar) o capturas de la consola; enlazarlas aquí con IDs redactados.
 
