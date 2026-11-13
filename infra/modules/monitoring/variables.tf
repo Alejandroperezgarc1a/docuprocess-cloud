@@ -32,6 +32,17 @@ variable "force_destroy_buckets" {
   type        = bool
 }
 
+variable "cloudtrail_mode" {
+  description = "Modo de auditoría CloudTrail: 'trail' crea bucket S3 + aws_cloudtrail; 'event-history' usa el historial de eventos de CloudTrail (compatible con el Sandbox, que deniega cloudtrail:CreateTrail)."
+  type        = string
+  default     = "event-history"
+
+  validation {
+    condition     = contains(["trail", "event-history"], var.cloudtrail_mode)
+    error_message = "cloudtrail_mode debe ser 'trail' o 'event-history'."
+  }
+}
+
 variable "ec2_cpu_threshold" {
   description = "Umbral (%) de CPU promedio del ASG (alarma EC2)."
   type        = number

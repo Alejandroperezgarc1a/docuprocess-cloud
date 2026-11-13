@@ -176,7 +176,7 @@ Formato de error: `{"error": "<codigo>", "message": "<texto legible>"}`.
 
 **Locals compartidos (raíz):** `name_prefix = "${project_name}-${environment}"` (por defecto `docuprocess-dev`), `instance_profile_name` (descubierto) y `app_role_arn` (construido).
 
-**Variables raíz:** ver `infra/variables.tf` (C2). Las principales son `aws_region`, `project_name`, `environment`, `azs`, `vpc_cidr`, `public_subnet_cidrs`, `private_subnet_cidrs`, `enable_nat_gateway`, `enable_interface_endpoints`, `instance_type`, `instance_role_name`, `asg_min_size`, `asg_max_size`, `asg_desired_capacity`, `cpu_target_value`, `root_volume_size`, `db_name`, `db_username`, `db_password`, `jwt_secret`, `alert_email`, `dynamodb_table_name`, `document_events_table_name`, `enable_dynamodb_transactions`, `enable_point_in_time_recovery`, `worker_poll_seconds`, `worker_batch_size`, `upload_timeout_minutes`, `max_file_mb`, `app_artifact_path`, `cors_allowed_origins` y `force_destroy_buckets`.
+**Variables raíz:** ver `infra/variables.tf` (C2). Las principales son `aws_region`, `project_name`, `environment`, `azs`, `vpc_cidr`, `public_subnet_cidrs`, `private_subnet_cidrs`, `enable_nat_gateway`, `enable_interface_endpoints`, `instance_type`, `instance_role_name`, `asg_min_size`, `asg_max_size`, `asg_desired_capacity`, `cpu_target_value`, `root_volume_size`, `db_name`, `db_username`, `db_password`, `jwt_secret`, `alert_email`, `dynamodb_table_name`, `document_events_table_name`, `enable_dynamodb_transactions`, `enable_point_in_time_recovery`, `worker_poll_seconds`, `worker_batch_size`, `upload_timeout_minutes`, `max_file_mb`, `app_artifact_path`, `cors_allowed_origins`, `force_destroy_buckets` y `cloudtrail_mode`.
 
 **Outputs por módulo** (nombres exactos):
 
@@ -189,9 +189,9 @@ Formato de error: `{"error": "<codigo>", "message": "<texto legible>"}`.
 | dynamodb | `table_name`, `table_arn`, `events_table_name`, `events_table_arn` |
 | sns | `topic_arn`, `topic_name` |
 | cdn | `cloudfront_domain_name`, `distribution_id`, `distribution_arn` |
-| monitoring | `alarm_names`, `cloudtrail_bucket_name`, `cloudtrail_arn` |
+| monitoring | `alarm_names`, `cloudtrail_bucket_name`, `cloudtrail_arn`, `cloudtrail_audit_mode` |
 
-**Outputs raíz:** `alb_dns_name`, `cloudfront_domain_name`, `cloudfront_distribution_id`, `app_url`, `docs_bucket_name`, `frontend_bucket_name`, `artifacts_bucket_name`, `dynamodb_table_name`, `dynamodb_events_table_name`, `sns_topic_arn`, `rds_endpoint`, `asg_name` y `vpc_id`.
+**Outputs raíz:** `alb_dns_name`, `cloudfront_domain_name`, `cloudfront_distribution_id`, `app_url`, `docs_bucket_name`, `frontend_bucket_name`, `artifacts_bucket_name`, `dynamodb_table_name`, `dynamodb_events_table_name`, `sns_topic_arn`, `rds_endpoint`, `asg_name`, `vpc_id`, `alarm_names`, `cloudtrail_bucket_name`, `cloudtrail_arn` y `cloudtrail_audit_mode`.
 
 ### 11. Permisos de la aplicación: políticas basadas en recursos
 
@@ -221,6 +221,8 @@ La app **no** debe usar operaciones de listado de cuenta (`ListBuckets`, `ListTa
 | La topic policy de SNS no acepta `sns:*`; `s3:HeadObject` no es una acción válida | Listar acciones concretas en las políticas |
 | `dynamodb:TransactWriteItems` no es una acción IAM válida (Sandbox, B3, 2026-11-12) | No incluirla en las políticas: DynamoDB autoriza la transacción con las acciones de cada ítem |
 | **Contingencia (no observada aún):** una SCP podría denegar las escrituras transaccionales (acciones de ítem como `PutItem`/`UpdateItem`) o `dynamodb:PutResourcePolicy` | `enable_dynamodb_transactions = false` escribe estado y evento por separado; sin `PutResourcePolicy` no hay forma de dar datos al rol (el Sandbox no permite crear roles) y habría que escalar el permiso |
+
+**CloudTrail en el Sandbox (B10, 2026-11-13):** el rol `voclabs` no permite `cloudtrail:CreateTrail` (error de política identity-based), pero sí `cloudtrail:LookupEvents`. Por eso `module.monitoring` usa por defecto `cloudtrail_mode = "event-history"`: la auditoría se consulta con el historial de eventos de CloudTrail (90 días) mediante `scripts/verify-cloudtrail.sh`. El modo `"trail"` crea el bucket dedicado, la política S3 y `aws_cloudtrail`; queda listo para una cuenta con permiso de creación de trails.
 
 ### 13. Desarrollo local
 

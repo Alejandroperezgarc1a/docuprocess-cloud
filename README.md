@@ -59,6 +59,7 @@ flowchart LR
 ## Stack
 
 - **Infraestructura:** Terraform y AWS (VPC, ALB, EC2 Auto Scaling, RDS MySQL, S3, DynamoDB, SNS, CloudFront, CloudWatch y CloudTrail).
+- **Auditoría:** CloudTrail en modo `event-history` para el Sandbox (historial de 90 días; `scripts/verify-cloudtrail.sh`); `cloudtrail_mode = "trail"` crea el bucket dedicado y el trail cuando la cuenta tiene permiso.
 - **Backend:** Node.js 24 + TypeScript (API REST con Express 5 y worker asíncrono) como servicios systemd en Amazon Linux 2023.
 - **Frontend:** HTML, CSS y JavaScript con Vite; build estático servido por CloudFront.
 - **Desarrollo local:** Docker Compose con MySQL y DynamoDB Local.

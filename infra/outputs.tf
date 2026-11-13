@@ -71,13 +71,18 @@ output "alarm_names" {
 }
 
 output "cloudtrail_bucket_name" {
-  description = "Bucket S3 de los logs de CloudTrail (B10)."
+  description = "Bucket S3 de los logs de CloudTrail (B10); null en modo event-history."
   value       = module.monitoring.cloudtrail_bucket_name
 }
 
 output "cloudtrail_arn" {
-  description = "ARN del trail de CloudTrail (B10)."
+  description = "ARN del trail de CloudTrail (B10); null en modo event-history."
   value       = module.monitoring.cloudtrail_arn
+}
+
+output "cloudtrail_audit_mode" {
+  description = "Modo de auditoría CloudTrail (B10): trail o event-history."
+  value       = module.monitoring.cloudtrail_audit_mode
 }
 
 output "cloudfront_domain_name" {

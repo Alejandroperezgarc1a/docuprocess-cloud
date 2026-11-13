@@ -13,14 +13,20 @@ output "alarm_names" {
   ]
 }
 
-# Nombre del bucket S3 dedicado a CloudTrail.
+# Nombre del bucket S3 dedicado a CloudTrail (null en modo event-history).
 output "cloudtrail_bucket_name" {
-  description = "Nombre del bucket S3 dedicado a CloudTrail."
-  value       = awscc_s3_bucket.cloudtrail.id
+  description = "Nombre del bucket S3 dedicado a CloudTrail; null si cloudtrail_mode = event-history."
+  value       = one(awscc_s3_bucket.cloudtrail[*].id)
 }
 
-# ARN del trail de CloudTrail.
+# ARN del trail de CloudTrail (null en modo event-history).
 output "cloudtrail_arn" {
-  description = "ARN del trail de CloudTrail."
-  value       = aws_cloudtrail.this.arn
+  description = "ARN del trail de CloudTrail; null si cloudtrail_mode = event-history."
+  value       = one(aws_cloudtrail.this[*].arn)
+}
+
+# Modo de auditoría CloudTrail en uso.
+output "cloudtrail_audit_mode" {
+  description = "Modo de auditoría CloudTrail: 'trail' o 'event-history'."
+  value       = var.cloudtrail_mode
 }

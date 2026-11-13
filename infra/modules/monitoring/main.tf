@@ -4,9 +4,13 @@
 # 4 alarmas: EC2 CPU, RDS CPU, RDS conexiones, RDS espacio libre.
 # todas con period = 300, evaluation_periods = 2, statistic = Average,
 # alarm_actions/ok_actions = [sns_topic_arn], treat_missing_data = "missing".
-# CloudTrail: trail de una región, bucket S3 dedicado (awscc_s3_bucket),
-# SSE-S3, política con s3:x-amz-acl y aws:SourceArn, enable_logging=true,
-# include_global_service_events=true, enable_log_file_validation=true.
+# CloudTrail: dos modos (var.cloudtrail_mode):
+#   - "trail": bucket S3 dedicado + aws_cloudtrail de una región, SSE-S3,
+#     política con s3:x-amz-acl y aws:SourceArn, enable_logging=true,
+#     include_global_service_events=true, enable_log_file_validation=true.
+#   - "event-history" (default en el Sandbox): usa el historial de eventos de
+#     CloudTrail (90 días), que sí permite cloudtrail:LookupEvents. El Sandbox
+#     deniega cloudtrail:CreateTrail, por lo que no se crea el trail.
 # Región fija us-east-1 (Sandbox). Los ARNs y nombres usan us-east-1.
 # ----------------------------------------------------------------------------
 
@@ -17,6 +21,10 @@ locals {
   region = "us-east-1"
 
   account_id = data.aws_caller_identity.current.account_id
+
+  # CloudTrail: "trail" crea bucket + trail; "event-history" usa el historial
+  # de eventos de CloudTrail (90 días) que el Sandbox sí permite consultar.
+  create_trail = var.cloudtrail_mode == "trail"
 
   # Nombre del bucket: name_prefix-cloudtrail-randomhex
   bucket_name = "${var.name_prefix}-cloudtrail-${random_id.suffix.hex}"
@@ -110,6 +118,8 @@ resource "aws_cloudwatch_metric_alarm" "rds_free_storage" {
 # para aws_s3_bucket tradicional). Se usa ObjectWriter para que la condición
 # s3:x-amz-acl = bucket-owner-full-control sea válida.
 resource "awscc_s3_bucket" "cloudtrail" {
+  count = local.create_trail ? 1 : 0
+
   bucket_name = local.bucket_name
 
   tags = [
@@ -122,7 +132,9 @@ resource "awscc_s3_bucket" "cloudtrail" {
 
 # Bloqueo de acceso público
 resource "aws_s3_bucket_public_access_block" "cloudtrail" {
-  bucket = awscc_s3_bucket.cloudtrail.id
+  count = local.create_trail ? 1 : 0
+
+  bucket = awscc_s3_bucket.cloudtrail[0].id
 
   block_public_acls       = true
   block_public_policy     = true
@@ -132,7 +144,9 @@ resource "aws_s3_bucket_public_access_block" "cloudtrail" {
 
 # ObjectWriter (ACL habilitadas) para satisfacer la condición s3:x-amz-acl
 resource "aws_s3_bucket_ownership_controls" "cloudtrail" {
-  bucket = awscc_s3_bucket.cloudtrail.id
+  count = local.create_trail ? 1 : 0
+
+  bucket = awscc_s3_bucket.cloudtrail[0].id
 
   rule {
     object_ownership = "ObjectWriter"
@@ -141,7 +155,9 @@ resource "aws_s3_bucket_ownership_controls" "cloudtrail" {
 
 # SSE-S3
 resource "aws_s3_bucket_server_side_encryption_configuration" "cloudtrail" {
-  bucket = awscc_s3_bucket.cloudtrail.id
+  count = local.create_trail ? 1 : 0
+
+  bucket = awscc_s3_bucket.cloudtrail[0].id
 
   rule {
     apply_server_side_encryption_by_default {
@@ -154,11 +170,13 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "cloudtrail" {
 # s3:PutObject en AWSLogs/<account_id>/* con s3:x-amz-acl = bucket-owner-full-control
 # y la condición aws:SourceArn = trail ARN.
 data "aws_iam_policy_document" "cloudtrail_policy" {
+  count = local.create_trail ? 1 : 0
+
   statement {
     sid       = "AWSCloudTrailAclCheck"
     effect    = "Allow"
     actions   = ["s3:GetBucketAcl"]
-    resources = [awscc_s3_bucket.cloudtrail.arn]
+    resources = [awscc_s3_bucket.cloudtrail[0].arn]
 
     principals {
       type        = "Service"
@@ -176,7 +194,7 @@ data "aws_iam_policy_document" "cloudtrail_policy" {
     sid       = "AWSCloudTrailWrite"
     effect    = "Allow"
     actions   = ["s3:PutObject"]
-    resources = ["${awscc_s3_bucket.cloudtrail.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"]
+    resources = ["${awscc_s3_bucket.cloudtrail[0].arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"]
 
     principals {
       type        = "Service"
@@ -199,8 +217,10 @@ data "aws_iam_policy_document" "cloudtrail_policy" {
 
 # Política S3 para el bucket de CloudTrail
 resource "aws_s3_bucket_policy" "cloudtrail" {
-  bucket = awscc_s3_bucket.cloudtrail.id
-  policy = data.aws_iam_policy_document.cloudtrail_policy.json
+  count = local.create_trail ? 1 : 0
+
+  bucket = awscc_s3_bucket.cloudtrail[0].id
+  policy = data.aws_iam_policy_document.cloudtrail_policy[0].json
 
   depends_on = [
     aws_s3_bucket_public_access_block.cloudtrail,
@@ -210,8 +230,10 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
 
 # Trail de CloudTrail (una sola región)
 resource "aws_cloudtrail" "this" {
+  count = local.create_trail ? 1 : 0
+
   name                          = local.trail_name
-  s3_bucket_name                = awscc_s3_bucket.cloudtrail.id
+  s3_bucket_name                = awscc_s3_bucket.cloudtrail[0].id
   include_global_service_events = true
   enable_log_file_validation    = true
   is_multi_region_trail         = false
@@ -222,10 +244,10 @@ resource "aws_cloudtrail" "this" {
 
 # terraform_data + local-exec para emular force_destroy (awscc no lo tiene nativo)
 resource "terraform_data" "empty_cloudtrail_bucket" {
-  count = var.force_destroy_buckets ? 1 : 0
+  count = local.create_trail && var.force_destroy_buckets ? 1 : 0
 
   triggers_replace = {
-    cloudtrail = awscc_s3_bucket.cloudtrail.id
+    cloudtrail = awscc_s3_bucket.cloudtrail[0].id
   }
 
   input = {
