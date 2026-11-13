@@ -155,9 +155,9 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "cloudtrail" {
 # y la condición aws:SourceArn = trail ARN.
 data "aws_iam_policy_document" "cloudtrail_policy" {
   statement {
-    sid    = "AWSCloudTrailAclCheck"
-    effect = "Allow"
-    actions = ["s3:GetBucketAcl"]
+    sid       = "AWSCloudTrailAclCheck"
+    effect    = "Allow"
+    actions   = ["s3:GetBucketAcl"]
     resources = [awscc_s3_bucket.cloudtrail.arn]
 
     principals {
@@ -173,8 +173,8 @@ data "aws_iam_policy_document" "cloudtrail_policy" {
   }
 
   statement {
-    sid    = "AWSCloudTrailWrite"
-    effect = "Allow"
+    sid       = "AWSCloudTrailWrite"
+    effect    = "Allow"
     actions   = ["s3:PutObject"]
     resources = ["${awscc_s3_bucket.cloudtrail.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"]
 
