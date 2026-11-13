@@ -51,6 +51,16 @@ El laboratorio **no estaba limpio**: al reutilizarlo, conservó recursos de un d
 - La suscripción SNS quedó `PendingConfirmation` al desplegar; se confirmó el buzón después ese mismo día (13-nov), así que las alertas ya se entregan (ver la evidencia de monitoreo).
 - `terraform destroy` no se ejecutó (el stack se conserva para la defensa/demo).
 
+### Capturas de la consola (primera corrida)
+
+Respaldo visual de la primera corrida, por si la demostración en vivo falla. Se censuraron el ID de cuenta, el usuario del Sandbox, la barra del navegador y un bucket de pruebas locales que no crea Terraform.
+
+| Captura | Qué muestra |
+| --- | --- |
+| ![EC2: 2 instancias en 2 AZ](img/c4/ec2-instancias-2az.jpg) | EC2: las 2 instancias `t3.micro` del ASG en `Running` con 3/3 checks, una en `us-east-1a` y otra en `us-east-1b`, sin IP pública |
+| ![S3: buckets del proyecto](img/c4/s3-buckets.jpg) | S3: los 3 buckets que crea Terraform (`artifacts`, `docs`, `frontend`) con el mismo sufijo aleatorio |
+| ![S3: documento subido](img/c4/s3-documento-subido.jpg) | S3: un PDF subido desde el navegador con la URL prefirmada, en `uploads/<userId>/<documentId>/` del bucket de documentos |
+
 ## Segunda corrida: cuenta vacía verificada (2026-11-13, ~21:03–21:55 UTC)
 
 Corrida independiente en otra cuenta del Sandbox para cumplir el criterio de "plantilla limpia" sin importar huérfanos: clon nuevo desde GitHub (`main` = `93a2209`, B11 incluido), sin estado de Terraform y con la cuenta comprobada vacía antes de empezar (`./scripts/verify-deployment.sh limpieza` → 12/12).
