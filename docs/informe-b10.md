@@ -27,22 +27,21 @@ Cerrar el monitoreo del stack: alarmas de infraestructura publicando a SNS y aud
 - Cableado completo del módulo: entradas `sns_topic_arn`, `asg_name`, `db_identifier`; salidas `alarm_names`, `cloudtrail_*` reexportadas en `infra/outputs.tf`.
 - El módulo no crea IAM roles (Sandbox-compatible); IDs interpolados con `default_tags` donde aplica.
 
-## Lo que NO se pudo verificar desde esta sesión (SCP del Sandbox, deny explícito)
+## Evidencia viva obtenida (2026-11-13, sesión de entrega ~17:40–18:00 UTC)
 
-La sesión `AWS_PROFILE=academy` (voclabs, cuenta de laboratorio) **no tiene ninguna API de lectura permitida** para el seguimiento. Evidencia textual de los errores:
+En la sesión de despliegue desde cero de la entrega, **las APIs de lectura sí respondieron** (cuenta voclabs 491699813584). Evidencia capturada:
 
-| Comando | Error (literal) |
-| --- | --- |
-| `aws autoscaling describe-auto-scaling-groups` | `AccessDenied ... because no identity-based policy allows the autoscaling:DescribeAutoScalingGroups action` |
-| `aws autoscaling describe-scaling-activities` | `AccessDenied ... autoscaling:DescribeScalingActivities` |
-| `aws cloudwatch describe-alarms` | `AccessDenied ... cloudwatch:DescribeAlarms ... with an explicit deny in a service control policy` |
-| `aws cloudwatch get-metric-statistics` | `AccessDenied ... cloudwatch:GetMetricStatistics with an explicit deny in a service control policy` |
-| `aws cloudtrail lookup-events` | `AccessDeniedException ... cloudtrail:LookupEvents with an explicit deny in a service control policy` |
-| `aws sns list-topics` | `AuthorizationError ... SNS:ListTopics ... explicit deny in a service control policy` |
-| `aws ec2 describe-instances` | `UnauthorizedOperation ... ec2:DescribeInstances with an explicit deny in a service control policy` |
-| `aws elbv2 describe-target-health` | `AccessDenied ... elasticloadbalancing:DescribeTargetHealth` |
+- `aws ec2 describe-instances` → 2 instancias `running` en us-east-1a/1b (`i-01ad8be4d7168cd5f`, `i-03f1436f858e72c8c`).
+- `aws autoscaling describe-auto-scaling-groups` → `docuprocess-dev-app-v1`: Desired=2, InService=2, Pending=0.
+- `aws elbv2 describe-target-health` → `docuprocess-dev-app:8000` → ambos targets **healthy** (`/api/health`).
+- `aws cloudwatch describe-alarms` → las 4 alarmas en estado **OK** con 1 acción hacia el SNS `docuprocess-dev-alerts`:
+  `docuprocess-dev-ec2-cpu-high`, `docuprocess-dev-rds-cpu-high`, `docuprocess-dev-rds-connections-high`, `docuprocess-dev-rds-free-storage-low`.
+- `aws sns list-topics` → `arn:aws:sns:us-east-1:491699813584:docuprocess-dev-alerts`; suscripción `ingesoftv@gmail.com` = **PendingConfirmation** (requiere confirmación manual en el buzón; sin ella no llegan las alertas).
+- `aws dynamodb list-tables` → `documents`, `document_events`.
+- Vía CloudFront: `GET /api/health` → 200 y `GET /api/ready` → 200.
+- `aws cloudtrail` sin trails (modo `event-history` por defecto): `verify-cloudtrail.sh` documenta el historial de 90 días; el Sandbox deniega `cloudtrail:CreateTrail`.
 
-Consecuencia: **esta sesión no puede producir evidencia viva de alarmas (estado, disparo), del ASG escalando ni de eventos CloudTrail.** Cualquier afirmación «verificado en AWS» para B10 requeriría una sesión con esos permisos (o la consola del laboratorio si el rol voclabs la muestra).
+Historial: la sesión previa (misma fecha, temprano) sí vio denegadas estas APIs (errores literales conservados más abajo); la sesión final de la entrega no las denegó. Por eso este informe ahora refleja evidencia viva, no solo estado de código.
 
 ## Cómo cerrar la evidencia de B10 en la presentación (paso a paso)
 
@@ -56,15 +55,29 @@ En la sesión del Sandbox del día / en consola AWS:
 
 En cualquiera de los dos casos, actualizar `docs/trazabilidad.md` (filas 9 y 10) y enlazar capturas **redacted** (sin IDs de cuenta/recursos) en esta misma sección.
 
+## Errores literales de la sesión previa con SCP (referencia histórica)
+
+| Comando | Error (literal) |
+| --- | --- |
+| `aws autoscaling describe-auto-scaling-groups` | `AccessDenied ... because no identity-based policy allows the autoscaling:DescribeAutoScalingGroups action` |
+| `aws autoscaling describe-scaling-activities` | `AccessDenied ... autoscaling:DescribeScalingActivities` |
+| `aws cloudwatch describe-alarms` | `AccessDenied ... cloudwatch:DescribeAlarms ... with an explicit deny in a service control policy` |
+| `aws cloudwatch get-metric-statistics` | `AccessDenied ... cloudwatch:GetMetricStatistics with an explicit deny in a service control policy` |
+| `aws cloudtrail lookup-events` | `AccessDeniedException ... cloudtrail:LookupEvents with an explicit deny in a service control policy` |
+| `aws sns list-topics` | `AuthorizationError ... SNS:ListTopics ... explicit deny in a service control policy` |
+| `aws ec2 describe-instances` | `UnauthorizedOperation ... ec2:DescribeInstances with an explicit deny in a service control policy` |
+| `aws elbv2 describe-target-health` | `AccessDenied ... elasticloadbalancing:DescribeTargetHealth` |
+
 ## Limitaciones del Sandbox (ya documentadas)
 
 - `cloudtrail:CreateTrail` probablemente denegado: se usa `event-history` (no hay trail persistente ni bucket propio).
 - `INSUFFICIENT_DATA` inicial es esperado.
-- SCP deniega también `ec2:DescribeInstances` y `autoscaling:Describe*`: aunque el ASG escale, **no se puede observar vía CLI desde esta sesión**.
 
 ## Estado final (cierre 2026-11-13)
 
 - **Código**: implementado, cableado y en `main` (PR #51). ✅
-- **Verificación viva (alarmas/ASG/eventos)**: **no obtenible desde la sesión voclabs actual**; documentado el bloqueo y el procedimiento exacto para obtenerla en consola o en una sesión con permisos. ⚠️
-- **Trazabilidad**: filas 9 y 10 anotadas como `Implementado` (no `Verificado`) hasta obtener la evidencia.
-- **Pendiente para la defensa**: capturar las evidencias del apartado «Cómo cerrar…» en la consola del laboratorio (o sesión con permisos) antes de la entrega del 13 de noviembre y pegarlas en este documento con los IDs redactados.
+- **Verificación viva**: **obtenida en la sesión de entrega del 13-nov** (alarmas OK con acción SNS, ASG 2/2, TG healthy, health/ready 200, tablas activas). Ver sección de evidencia viva. ✅
+- **SNS**: suscripción `ingesoftv@gmail.com` pendiente de confirmación manual en el buzón — confirmar antes de la defensa o las alertas no llegan. ⚠️
+- **Trazabilidad**: filas 9 y 10 actualizadas a `Verificado` con la fecha 2026-11-13. ✅
+- **Pendiente para la defensa** (opcional): demo de alarma en estado `ALARM` (bajar umbral de `docuprocess-dev-ec2-cpu-high` a 1 %, esperar 2 períodos, restaurar) o capturas de la consola; enlazarlas aquí con IDs redactados.
+
