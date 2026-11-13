@@ -17,6 +17,8 @@ export interface Config {
   awsRegion: string;
   ddbEndpointUrl?: string;
   corsAllowedOrigins: readonly string[];
+  /** Lowercased emails promoted to the admin role at boot (from ADMIN_EMAILS). */
+  adminEmails: readonly string[];
 }
 
 const REQUIRED_ENV = [
@@ -94,6 +96,10 @@ export function loadConfig(
     .split(',')
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0);
+  const adminEmails = (env.ADMIN_EMAILS ?? '')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter((email) => email.length > 0);
 
   return {
     docsBucket: (values.DOCS_BUCKET ?? '').trim(),
@@ -109,5 +115,6 @@ export function loadConfig(
     awsRegion: (values.AWS_REGION ?? '').trim(),
     ddbEndpointUrl,
     corsAllowedOrigins,
+    adminEmails,
   };
 }

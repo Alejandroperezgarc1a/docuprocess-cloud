@@ -5,6 +5,7 @@ import express, {
 } from 'express';
 import swaggerUi from 'swagger-ui-express';
 import { registerAuthRoutes } from './auth.js';
+import { registerAdminRoutes } from './admin.js';
 import type { AwsService } from './aws.js';
 import { createAwsService } from './aws.js';
 import type { Config } from './config.js';
@@ -30,9 +31,12 @@ const KNOWN_ROUTES: ReadonlyArray<{ pattern: RegExp; methods: readonly string[] 
   { pattern: /^\/api\/ready\/?$/, methods: ['GET'] },
   { pattern: /^\/api\/auth\/register\/?$/, methods: ['POST'] },
   { pattern: /^\/api\/auth\/login\/?$/, methods: ['POST'] },
+  { pattern: /^\/api\/auth\/logout\/?$/, methods: ['POST'] },
   { pattern: /^\/api\/documents\/?$/, methods: ['GET', 'POST'] },
   { pattern: /^\/api\/documents\/[^/]+\/?$/, methods: ['GET'] },
+  { pattern: /^\/api\/documents\/[^/]+\/retry\/?$/, methods: ['POST'] },
   { pattern: /^\/api\/documents\/[^/]+\/events\/?$/, methods: ['GET'] },
+  { pattern: /^\/api\/admin\/documents\/?$/, methods: ['GET'] },
   { pattern: /^\/api\/docs(?:\/.*)?$/, methods: ['GET'] },
   { pattern: /^\/api\/openapi\.json\/?$/, methods: ['GET'] },
 ];
@@ -237,7 +241,8 @@ export function createApp({
   app.get('/api/health', healthHandler(config, db, aws));
   app.get('/api/ready', readyHandler(db));
   registerAuthRoutes(app, config, db);
-  registerDocumentRoutes(app, config, aws);
+  registerAdminRoutes(app, config, aws, db);
+  registerDocumentRoutes(app, config, aws, db);
 
   app.get('/api/openapi.json', (_req, res) => {
     res.json(openApiSpec);
@@ -252,12 +257,24 @@ export function createApp({
   app.use(errorHandler());
 
   // Startup must not fail when MySQL is down: the ALB health check still works.
-  void db.ensureSchema().catch((error: unknown) => {
-    console.warn(
-      `${new Date().toISOString()} WARN docuprocess.api: no se pudo aplicar schema.sql al arrancar:`,
-      error,
-    );
-  });
+  void db
+    .ensureSchema()
+    .then(async () => {
+      if (config.adminEmails.length > 0) {
+        const promoted = await db.promoteAdmins(config.adminEmails);
+        if (promoted > 0) {
+          console.info(
+            `${new Date().toISOString()} INFO docuprocess.api: ${promoted} usuario(s) promovidos a admin (ADMIN_EMAILS)`,
+          );
+        }
+      }
+    })
+    .catch((error: unknown) => {
+      console.warn(
+        `${new Date().toISOString()} WARN docuprocess.api: no se pudo preparar el esquema de MySQL al arrancar:`,
+        error,
+      );
+    });
 
   return app;
 }

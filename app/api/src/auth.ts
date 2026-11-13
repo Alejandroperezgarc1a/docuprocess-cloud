@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { randomUUID } from 'node:crypto';
 import type { Express, RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
 import type { Config } from './config.js';
@@ -72,10 +73,11 @@ async function ensureSchemaOrError(db: Db): Promise<boolean> {
 }
 
 /**
- * Express middleware that validates the Bearer JWT, requires the sub and iat
- * claims, and exposes userId/userEmail to downstream handlers.
+ * Express middleware that validates the Bearer JWT (HS256), requires the sub,
+ * iat and jti claims, rejects tokens revoked via logout (revoked_tokens table),
+ * and exposes userId/userEmail/userRole and tokenJti/tokenExp to handlers.
  */
-export function requireAuth(config: Config): RequestHandler {
+export function requireAuth(config: Config, db: Db): RequestHandler {
   return (req, res, next) => {
     const header = req.get('authorization') ?? '';
     const parts = header.split(/\s+/, 2);
@@ -106,14 +108,55 @@ export function requireAuth(config: Config): RequestHandler {
       typeof payload === 'string' ||
       typeof payload.sub !== 'string' ||
       payload.sub === '' ||
-      typeof payload.iat !== 'number'
+      typeof payload.iat !== 'number' ||
+      typeof payload.jti !== 'string' ||
+      payload.jti === ''
     ) {
       errorResponse(res, 'unauthorized', 'Token invalido.', 401);
       return;
     }
 
-    req.userId = payload.sub;
-    req.userEmail = typeof payload.email === 'string' ? payload.email : '';
+    const jti = payload.jti;
+    void db
+      .isTokenRevoked(jti)
+      .then((revoked) => {
+        if (revoked) {
+          errorResponse(res, 'unauthorized', 'El token fue revocado.', 401);
+          return;
+        }
+        req.userId = payload.sub as string;
+        req.userEmail = typeof payload.email === 'string' ? payload.email : '';
+        req.userRole = typeof payload.role === 'string' ? payload.role : 'user';
+        req.tokenJti = jti;
+        req.tokenExp =
+          typeof payload.exp === 'number' ? payload.exp : 0;
+        next();
+      })
+      .catch((error: unknown) => {
+        console.error(
+          `${new Date().toISOString()} ERROR docuprocess.api: no se pudo consultar revoked_tokens:`,
+          error,
+        );
+        errorResponse(
+          res,
+          'database_unavailable',
+          'Base de datos no disponible.',
+          503,
+        );
+      });
+  };
+}
+
+/**
+ * Rejects requests whose authenticated user does not have the admin role.
+ * Must run after requireAuth (it reads req.userRole).
+ */
+export function requireAdmin(): RequestHandler {
+  return (req, res, next) => {
+    if (req.userRole !== 'admin') {
+      errorResponse(res, 'forbidden', 'Se requiere el rol admin.', 403);
+      return;
+    }
     next();
   };
 }
@@ -218,11 +261,35 @@ export function registerAuthRoutes(app: Express, config: Config, db: Db): void {
     }
 
     const token = jwt.sign(
-      { sub: String(user.id), email: user.email },
+      { sub: String(user.id), email: user.email, role: user.role, jti: randomUUID() },
       config.jwtSecret,
       { algorithm: 'HS256', expiresIn: JWT_TTL_SECONDS },
     );
 
     res.status(200).json({ token, expiresIn: JWT_TTL_SECONDS });
+  });
+
+  // Logout real: revoca el jti del token usado en este request. El token queda
+  // inutilizable de inmediato aunque su exp no haya llegado.
+  app.post('/api/auth/logout', requireAuth(config, db), async (req, res) => {
+    const jti = req.tokenJti;
+    const userId = req.userId;
+    const exp = req.tokenExp ?? 0;
+    if (jti === undefined || userId === undefined) {
+      errorResponse(res, 'unauthorized', 'Token invalido.', 401);
+      return;
+    }
+    try {
+      await db.revokeToken(jti, Number(userId), exp);
+    } catch (error) {
+      db.markSchemaMissing(error);
+      console.error(
+        `${new Date().toISOString()} ERROR docuprocess.api: error de MySQL en logout:`,
+        error,
+      );
+      errorResponse(res, 'database_unavailable', 'Base de datos no disponible.', 503);
+      return;
+    }
+    res.status(204).end();
   });
 }

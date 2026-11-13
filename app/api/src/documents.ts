@@ -3,6 +3,7 @@ import type { Express } from 'express';
 import { requireAuth } from './auth.js';
 import type { AwsService } from './aws.js';
 import type { Config } from './config.js';
+import type { Db } from './db.js';
 import { errorResponse } from './errors.js';
 import { readJsonBody } from './request.js';
 import type { DocumentEvent, DocumentItem } from './types.js';
@@ -73,8 +74,9 @@ export function registerDocumentRoutes(
   app: Express,
   config: Config,
   aws: AwsService,
+  db: Db,
 ): void {
-  const auth = requireAuth(config);
+  const auth = requireAuth(config, db);
 
   app.post('/api/documents', auth, async (req, res) => {
     const userId = req.userId;
@@ -239,6 +241,87 @@ export function registerDocumentRoutes(
     }
 
     res.status(200).json(item);
+  });
+
+  // Reintento manual de un documento FAILED (dueño o admin). Reencola a PENDING con el
+  // mismo patrón condicional del worker: gana quien lo haga primero; el perdedor ve 409.
+  app.post('/api/documents/:documentId/retry', auth, async (req, res) => {
+    const userId = req.userId;
+    if (userId === undefined) {
+      errorResponse(res, 'unauthorized', 'Falta el token Bearer.', 401);
+      return;
+    }
+
+    const rawDocumentId = req.params.documentId;
+    const documentId = typeof rawDocumentId === 'string' ? rawDocumentId : '';
+    if (!UUID_RE.test(documentId)) {
+      errorResponse(res, 'not_found', 'Documento no encontrado.', 404);
+      return;
+    }
+
+    let item: DocumentItem | undefined;
+    try {
+      item = await aws.getDocument(documentId);
+    } catch (error) {
+      console.error(
+        `${new Date().toISOString()} ERROR docuprocess.api: no se pudo leer el documento:`,
+        error,
+      );
+      errorResponse(
+        res,
+        'storage_unavailable',
+        'No se pudo consultar el documento.',
+        503,
+      );
+      return;
+    }
+
+    if (
+      item === undefined ||
+      (item.userId !== userId && req.userRole !== 'admin')
+    ) {
+      errorResponse(res, 'not_found', 'Documento no encontrado.', 404);
+      return;
+    }
+
+    if (item.status !== 'FAILED') {
+      errorResponse(
+        res,
+        'invalid_state',
+        'Solo se pueden reintentar documentos en estado FAILED.',
+        409,
+      );
+      return;
+    }
+
+    let requeued = false;
+    try {
+      requeued = await aws.retryDocument(item, new Date().toISOString());
+    } catch (error) {
+      console.error(
+        `${new Date().toISOString()} ERROR docuprocess.api: no se pudo reintentar el documento:`,
+        error,
+      );
+      errorResponse(
+        res,
+        'storage_unavailable',
+        'No se pudo reintentar el documento.',
+        503,
+      );
+      return;
+    }
+
+    if (!requeued) {
+      errorResponse(
+        res,
+        'invalid_state',
+        'El documento ya no esta FAILED (otro reintento lo tomo).',
+        409,
+      );
+      return;
+    }
+
+    res.status(200).json({ status: 'PENDING' });
   });
 
   // Bitácora auditable del documento. Se lee de document_events (append-only), no del ítem

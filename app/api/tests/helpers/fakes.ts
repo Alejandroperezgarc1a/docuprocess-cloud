@@ -21,6 +21,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     dbPassword: 'test-password',
     jwtSecret: 'test-secret-0123456789abcdefghij',
     awsRegion: 'us-east-1',
+    adminEmails: [],
     corsAllowedOrigins: [
       'http://localhost:5500',
       'http://127.0.0.1:5500',
@@ -31,11 +32,14 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
 
 export class FakeDb implements Db {
   readonly users = new Map<string, UserRecord>();
+  readonly revoked = new Set<string>();
+  promoteAdminsCalls: string[][] = [];
   schemaCalls = 0;
   schemaReady = false;
   failSchema = false;
   failPing = false;
   failQueries = false;
+  failRevoke = false;
   private nextId = 1;
 
   async ensureSchema(_force = false): Promise<void> {
@@ -55,7 +59,7 @@ export class FakeDb implements Db {
     }
     const id = this.nextId;
     this.nextId += 1;
-    this.users.set(email, { id, email, password_hash: passwordHash });
+    this.users.set(email, { id, email, password_hash: passwordHash, role: 'user' });
     return id;
   }
 
@@ -64,6 +68,33 @@ export class FakeDb implements Db {
       throw new Error('MySQL apagado');
     }
     return this.users.get(email);
+  }
+
+  async revokeToken(jti: string, _userId: number, _expiresAt: number): Promise<void> {
+    if (this.failRevoke) {
+      throw new Error('MySQL apagado');
+    }
+    this.revoked.add(jti);
+  }
+
+  async isTokenRevoked(jti: string): Promise<boolean> {
+    if (this.failQueries) {
+      throw new Error('MySQL apagado');
+    }
+    return this.revoked.has(jti);
+  }
+
+  async promoteAdmins(emails: readonly string[]): Promise<number> {
+    this.promoteAdminsCalls.push([...emails]);
+    let count = 0;
+    for (const email of emails) {
+      const user = this.users.get(email);
+      if (user !== undefined && user.role !== 'admin') {
+        this.users.set(email, { ...user, role: 'admin' });
+        count += 1;
+      }
+    }
+    return count;
   }
 
   async ping(): Promise<void> {
@@ -139,6 +170,44 @@ export class FakeAws implements AwsService {
       .sort((left, right) => left.eventAt.localeCompare(right.eventAt))
       .slice(0, 200)
       .map((event) => structuredClone(event));
+  }
+
+  async listAllDocuments(limit: number): Promise<DocumentItem[]> {
+    if (this.failQuery) {
+      throw new Error('DynamoDB apagado');
+    }
+    return [...this.documents.values()]
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .slice(0, limit)
+      .map((item) => structuredClone(item));
+  }
+
+  retryResult = true;
+  retryCalls: Array<{ item: DocumentItem; now: string }> = [];
+
+  async retryDocument(item: DocumentItem, now: string): Promise<boolean> {
+    this.retryCalls.push({ item, now });
+    const current = this.documents.get(item.documentId);
+    if (current === undefined || current.status !== 'FAILED' || !this.retryResult) {
+      return false;
+    }
+    const next: DocumentItem = { ...current, status: 'PENDING', updatedAt: now };
+    delete next.error;
+    delete next.result;
+    this.documents.set(item.documentId, structuredClone(next));
+    this.events.push({
+      documentId: item.documentId,
+      eventAt: `${now}#test`,
+      eventId: `evt-${this.events.length + 1}`,
+      userId: item.userId,
+      eventDay: now.slice(0, 10),
+      fromStatus: 'FAILED',
+      toStatus: 'PENDING',
+      actor: 'api',
+      reason: 'manual retry',
+      schemaVersion: 1,
+    });
+    return true;
   }
 
   async presignUpload(key: string, contentType: string): Promise<string> {

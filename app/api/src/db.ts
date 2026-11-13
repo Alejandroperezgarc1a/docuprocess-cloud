@@ -12,6 +12,7 @@ export interface UserRecord {
   id: number;
   email: string;
   password_hash: string;
+  role: string;
 }
 
 /** Persistence operations required by the authentication layer. */
@@ -22,6 +23,12 @@ export interface Db {
   createUser(email: string, passwordHash: string): Promise<number>;
   /** Finds a user by normalized email. */
   findUserByEmail(email: string): Promise<UserRecord | undefined>;
+  /** Revokes a JWT by its jti so it stops being accepted. */
+  revokeToken(jti: string, userId: number, expiresAt: number): Promise<void>;
+  /** Returns true when the jti was revoked (logout). */
+  isTokenRevoked(jti: string): Promise<boolean>;
+  /** Promotes every configured email to admin; returns how many users were promoted. */
+  promoteAdmins(emails: readonly string[]): Promise<number>;
   /** Runs a lightweight query to verify that MySQL is reachable. */
   ping(): Promise<void>;
   /** Clears the schema flag when MySQL reports a missing table. */
@@ -108,6 +115,18 @@ export class MySqlDb implements Db {
     for (const statement of parseSchemaStatements(raw)) {
       await this.pool.query(statement);
     }
+    // Migración para tablas users creadas antes de la columna role (MySQL 8 no soporta
+    // ADD COLUMN IF NOT EXISTS). En un deploy nuevo el CREATE ya incluye la columna.
+    const [rows] = await this.pool.query<RowDataPacket[]>(
+      `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users' AND COLUMN_NAME = 'role'`,
+      [this.config.dbName],
+    );
+    if (Number((rows[0] as { n?: unknown })?.n ?? 0) === 0) {
+      await this.pool.query(
+        "ALTER TABLE users ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'user'",
+      );
+    }
     this.schemaReady = true;
   }
 
@@ -130,7 +149,7 @@ export class MySqlDb implements Db {
   /** Returns the user row for an email, or undefined when it does not exist. */
   async findUserByEmail(email: string): Promise<UserRecord | undefined> {
     const [rows] = await this.pool.execute<RowDataPacket[]>(
-      'SELECT id, email, password_hash FROM users WHERE email = ?',
+      'SELECT id, email, password_hash, role FROM users WHERE email = ?',
       [email],
     );
     const row = rows[0];
@@ -141,7 +160,44 @@ export class MySqlDb implements Db {
       id: Number(row.id),
       email: String(row.email),
       password_hash: String(row.password_hash),
+      role: String(row.role),
     };
+  }
+
+  /** Inserts the token's jti into revoked_tokens; idempotent. */
+  async revokeToken(jti: string, userId: number, expiresAt: number): Promise<void> {
+    await this.pool.execute(
+      `INSERT INTO revoked_tokens (jti, user_id, expires_at)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE jti = jti`,
+      [jti, userId, expiresAt],
+    );
+    // Poda oportunista: las filas cuyo token ya vencería naturalmente no guardan valor.
+    await this.pool.execute('DELETE FROM revoked_tokens WHERE expires_at < ?', [
+      Math.floor(Date.now() / 1000),
+    ]);
+  }
+
+  /** Returns true when the jti was revoked. */
+  async isTokenRevoked(jti: string): Promise<boolean> {
+    const [rows] = await this.pool.execute<RowDataPacket[]>(
+      'SELECT jti FROM revoked_tokens WHERE jti = ? LIMIT 1',
+      [jti],
+    );
+    return rows.length > 0;
+  }
+
+  /** Promotes every configured email to admin; returns how many rows changed. */
+  async promoteAdmins(emails: readonly string[]): Promise<number> {
+    if (emails.length === 0) {
+      return 0;
+    }
+    const placeholders = emails.map(() => '?').join(', ');
+    const [result] = await this.pool.execute<ResultSetHeader>(
+      `UPDATE users SET role = 'admin' WHERE email IN (${placeholders})`,
+      [...emails],
+    );
+    return Number(result.affectedRows);
   }
 
   /** Executes SELECT 1 to verify connectivity. */

@@ -1,10 +1,14 @@
+import { randomUUID } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
   QueryCommand,
+  ScanCommand,
   TransactWriteCommand,
+  UpdateCommand,
+  type TransactWriteUpdate,
 } from '@aws-sdk/lib-dynamodb';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -18,6 +22,28 @@ const GSI_NAME = 'userId-createdAt';
 const DOCUMENT_LIST_LIMIT = 50;
 const EVENT_LIST_LIMIT = 200;
 const PRESIGN_EXPIRES_SECONDS = 900;
+const ADMIN_SCAN_LIMIT = 200;
+
+/** DynamoDB rejects a conditional or transactional write that no longer matches. */
+function isConditionalCheckFailure(error: unknown): boolean {
+  const name =
+    error instanceof Error
+      ? error.name
+      : typeof error === 'object' && error !== null && 'name' in error
+        ? String((error as { name?: unknown }).name)
+        : '';
+  if (name === 'ConditionalCheckFailedException') {
+    return true;
+  }
+  if (name === 'TransactionCanceledException') {
+    const reasons = (error as { CancellationReasons?: Array<{ Code?: string }> })
+      .CancellationReasons;
+    return (
+      reasons?.some((reason) => reason.Code === 'ConditionalCheckFailed') ?? false
+    );
+  }
+  return false;
+}
 
 /** AWS operations required by the documents layer. */
 export interface AwsService {
@@ -33,6 +59,13 @@ export interface AwsService {
   queryDocumentEvents(documentId: string): Promise<DocumentEvent[]>;
   /** Creates a pre-signed S3 PUT URL for the given key and content type. */
   presignUpload(key: string, contentType: string): Promise<string>;
+  /** Scans the documents table for the admin view; returns the newest `limit` items. */
+  listAllDocuments(limit: number): Promise<DocumentItem[]>;
+  /**
+   * Requeues a FAILED document as PENDING (clears result/error) and appends the
+   * `manual retry` audit event. Returns false when the document is no longer FAILED.
+   */
+  retryDocument(item: DocumentItem, now: string): Promise<boolean>;
 }
 
 /** Builds the production AWS service using SDK v3 clients. */
@@ -160,6 +193,86 @@ export function createAwsService(config: Config): AwsService {
           signableHeaders: new Set(['content-type']),
         },
       );
+    },
+
+    /** Escanea la tabla (vista admin); ordena en memoria por createdAt descendente. */
+    async listAllDocuments(limit: number): Promise<DocumentItem[]> {
+      const output = await ddb.send(
+        new ScanCommand({
+          TableName: config.ddbTable,
+          Limit: ADMIN_SCAN_LIMIT,
+          ProjectionExpression:
+            'documentId, userId, filename, contentType, s3Key, #s, createdAt, updatedAt, #r, #e',
+          ExpressionAttributeNames: { '#s': 'status', '#r': 'result', '#e': 'error' },
+        }),
+      );
+      const items = (output.Items ?? []) as DocumentItem[];
+      return items
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .slice(0, limit);
+    },
+
+    /**
+     * Reencola un documento FAILED: pasa a PENDING, borra result/error y agrega el evento
+     * `manual retry` a la bitácora (transaccional cuando DDB_TRANSACTIONS=true).
+     * Devuelve false si el documento ya no está FAILED (p. ej., otro admin ya lo reintentó).
+     */
+    async retryDocument(item: DocumentItem, now: string): Promise<boolean> {
+      const update = {
+        TableName: config.ddbTable,
+        Key: { documentId: item.documentId },
+        UpdateExpression: 'SET #s = :pending, updatedAt = :now REMOVE #r, #e',
+        ConditionExpression: '#s = :failed',
+        ExpressionAttributeNames: {
+          '#s': 'status',
+          '#r': 'result',
+          '#e': 'error',
+        },
+        ExpressionAttributeValues: {
+          ':failed': 'FAILED',
+          ':pending': 'PENDING',
+          ':now': now,
+        },
+      };
+      const event = {
+        documentId: item.documentId,
+        eventAt: `${now}#${randomUUID().slice(0, 6)}`,
+        eventId: randomUUID(),
+        userId: item.userId,
+        eventDay: now.slice(0, 10),
+        fromStatus: 'FAILED' as const,
+        toStatus: 'PENDING' as const,
+        actor: 'api' as const,
+        reason: 'manual retry',
+        schemaVersion: 1,
+      };
+      const eventPut = {
+        TableName: config.ddbEventsTable,
+        Item: event,
+        ConditionExpression: 'attribute_not_exists(eventAt)',
+      };
+
+      try {
+        if (config.ddbTransactions) {
+          await ddb.send(
+            new TransactWriteCommand({
+              TransactItems: [
+                { Update: update as TransactWriteUpdate },
+                { Put: eventPut },
+              ],
+            }),
+          );
+          return true;
+        }
+        await ddb.send(new UpdateCommand(update));
+        await ddb.send(new PutCommand(eventPut));
+        return true;
+      } catch (error) {
+        if (isConditionalCheckFailure(error)) {
+          return false;
+        }
+        throw error;
+      }
     },
   };
 }

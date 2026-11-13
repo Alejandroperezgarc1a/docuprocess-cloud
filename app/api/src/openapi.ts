@@ -13,8 +13,9 @@ export const openApiSpec = {
   servers: [{ url: '/' }],
   tags: [
     { name: 'Health', description: 'Service and dependency health checks.' },
-    { name: 'Auth', description: 'User registration and login.' },
+    { name: 'Auth', description: 'User registration, login and logout.' },
     { name: 'Documents', description: 'Document upload preparation and queries.' },
+    { name: 'Admin', description: 'Global operations restricted to the admin role.' },
   ],
   paths: {
     '/api/health': {
@@ -183,6 +184,86 @@ export const openApiSpec = {
         },
       },
     },
+    '/api/auth/logout': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Log out',
+        description:
+          'Revokes the jti of the bearer token used in this request. The token stops being accepted immediately.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '204': { description: 'Token revoked.' },
+          '401': {
+            description: 'Missing, invalid or already revoked bearer token.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          '503': {
+            description: 'MySQL is unavailable.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/admin/documents': {
+      get: {
+        tags: ['Admin'],
+        summary: 'List every document (admin)',
+        description:
+          'Global view for the admin role: all documents of all users, newest first (in-memory sort), at most 50 items.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'Document list.',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['items'],
+                  properties: {
+                    items: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/Document' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': {
+            description: 'Missing, invalid or expired bearer token.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          '403': {
+            description: 'The authenticated user does not have the admin role.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          '503': {
+            description: 'DynamoDB is unavailable.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+        },
+      },
+    },
     '/api/documents': {
       post: {
         tags: ['Documents'],
@@ -319,6 +400,70 @@ export const openApiSpec = {
           },
           '404': {
             description: 'Document not found or owned by another user.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          '503': {
+            description: 'DynamoDB is unavailable.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/documents/{documentId}/retry': {
+      post: {
+        tags: ['Documents'],
+        summary: 'Retry a failed document',
+        description:
+          'Owner or admin only. Requeues a FAILED document as PENDING (result/error are cleared) and appends a manual retry audit event. Returns 409 when the document is not FAILED or another retry already claimed it.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'documentId',
+            in: 'path',
+            required: true,
+            description: 'Document UUID v4.',
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'The document was requeued as PENDING.',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['status'],
+                  properties: { status: { type: 'string', enum: ['PENDING'] } },
+                },
+              },
+            },
+          },
+          '401': {
+            description: 'Missing, invalid or expired bearer token.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          '404': {
+            description: 'Document not found, or owned by another user (and not admin).',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          '409': {
+            description: 'The document is not FAILED, or another retry already claimed it.',
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/Error' },
