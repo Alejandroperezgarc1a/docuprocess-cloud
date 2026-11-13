@@ -4,6 +4,12 @@
 
 ## Vista general
 
+### Diagrama de arquitectura en AWS
+
+![Arquitectura de DocuProcess Cloud en AWS](img/docuprocess-aws.png)
+
+Vista con los íconos oficiales de AWS: región, VPC, las dos zonas de disponibilidad con sus subredes públicas y privadas, el Auto Scaling group y los servicios administrados. La fuente editable está en [`img/docuprocess-aws.drawio`](img/docuprocess-aws.drawio) (se abre con draw.io / diagrams.net). El diagrama Mermaid de la sección siguiente muestra el mismo despliegue con el detalle de puertos y security groups.
+
 ### Diagrama de componentes
 
 Todo lo que aparece en el diagrama lo crea Terraform (`infra/`), salvo el usuario, el correo del equipo y el historial de eventos de CloudTrail, que AWS mantiene en cada cuenta sin recurso propio. Las líneas punteadas son tráfico de métricas o de subida directa.

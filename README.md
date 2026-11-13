@@ -6,6 +6,8 @@ Proyecto final del curso Infraestructura III, Universidad ICESI.
 
 ## Arquitectura
 
+![Arquitectura de DocuProcess Cloud en AWS](docs/img/docuprocess-aws.png)
+
 ```mermaid
 flowchart LR
     user["Usuario - navegador"]
