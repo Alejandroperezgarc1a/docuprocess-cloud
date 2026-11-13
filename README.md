@@ -90,17 +90,31 @@ docs/               arquitectura, RDS vs. DynamoDB, trazabilidad y guía de desp
 
 ## Cronograma y tareas
 
-El tablero de [GitHub Projects](https://github.com/users/Alejandroperezgarc1a/projects/5) es la fuente única de verdad para tareas, responsables, fechas, horas y dependencias. El README no duplica esa información.
+El tablero de [GitHub Projects](https://github.com/users/Alejandroperezgarc1a/projects/5) es la fuente única de verdad para tareas, responsables, fechas, horas y dependencias. Este es el resumen:
+
+| Semana | Fechas | Foco | Tareas |
+| --- | --- | --- | --- |
+| 1 | Mié 4 – Vie 6 | Fundaciones | C1, C2, A1, B1 (spike), C5, A2, B4 |
+| 2 | Lun 9 – Mié 11 | Datos y cómputo | B2, B3, A5, A3, B8, B6 |
+| 3 | Jue 12 – Vie 13 | Notificaciones, CDN y monitoreo | B5 (cierre), A4, B7, B10 |
+| 4 | Sáb 14 – Mar 17 | Integración y cierre | B9, C3, A8, A9, B1 (documentación), C4 |
+| Buffer | Mié 18 | Colchón | — |
+
+La semana del 2 al 6 de noviembre queda limitada a las fundaciones. B2, B3, B6, B5, B7, B8, A3, A4 y A5 se movieron a la semana del 9 para no concentrar tareas. El cierre técnico estimado es el **mar 17 de noviembre** y el **mié 18** queda como buffer.
 
 ## Cómo desplegar
 
 La guía completa (requisitos, credenciales del Sandbox y solución de problemas) llega con la tarea A9. El orden mínimo es:
 
 ```bash
+aws sts get-caller-identity                                 # confirmar la cuenta del Sandbox antes de aplicar
+# Terraform y los scripts usan la cadena de credenciales por defecto ([default]).
+# Si prefieres un perfil concreto: export AWS_PROFILE=<perfil> o define aws_profile en terraform.tfvars.
 cp infra/terraform.tfvars.example infra/terraform.tfvars   # completar alert_email, db_password y jwt_secret
 ./scripts/package-app.sh                                    # genera dist/docuprocess-app.zip (Node 24 + zip)
 terraform -chdir=infra init
 terraform -chdir=infra apply
+# Revisar el correo de AWS y confirmar la suscripción de SNS antes de probar las alertas.
 ```
 
 `package-app.sh` va **antes** de cada `apply` que deba llevar código nuevo: Terraform sube el zip con su hash en el nombre y, si cambió, reemplaza las instancias sin caída del servicio.

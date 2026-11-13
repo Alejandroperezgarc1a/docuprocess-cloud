@@ -163,13 +163,14 @@ Formato de error: `{"error": "<codigo>", "message": "<texto legible>"}`.
 
 ### 8. Archivos permitidos
 
-`application/pdf`, `image/png`, `image/jpeg` y `text/plain`, con un máximo de **10 MB**. Lo valida el frontend (B7), la API sobre lo declarado (A6) y el worker sobre el archivo real (B5). Una URL prefirmada de tipo PUT no puede imponer el tamaño, por eso el worker es la última barrera. El worker detecta el MIME por magic bytes (`file-type`) y, si no hay firma conocida, acepta UTF-8 válido como `text/plain`; rechaza el resto.
+`application/pdf`, `image/png`, `image/jpeg` y `text/plain`, con un máximo de **10 MB**. Lo valida el frontend (B8), la API sobre lo declarado (A6) y el worker sobre el archivo real (B5). Una URL prefirmada de tipo PUT no puede imponer el tamaño, por eso el worker es la última barrera. El worker detecta el MIME por magic bytes (`file-type`) y, si no hay firma conocida, acepta UTF-8 válido como `text/plain`; rechaza el resto.
 
 ### 9. Notificación SNS (worker)
 
 - Subject: `DocuProcess: <filename> <status>` (máximo 100 caracteres, el límite de SNS).
 - Cuerpo JSON: `{"documentId", "userId", "filename", "status", "error"?}`.
 - Si `SNS_TOPIC_ARN` está vacío (desarrollo local), el worker escribe el mensaje en el log.
+- La suscripción de correo queda en `PendingConfirmation` hasta que el destinatario pulsa el enlace del correo de AWS. Terraform no puede confirmarla ni borrar una suscripción sin confirmar; hay que confirmarla después del `apply` antes de la demostración.
 
 ### 10. Nombres en Terraform
 

@@ -8,6 +8,17 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
+variable "aws_profile" {
+  description = "Perfil opcional de AWS CLI. Si se omite (null) se usa la cadena de credenciales por defecto ([default], variables de entorno, SSO, rol de instancia...)."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.aws_profile == null || try(length(trimspace(var.aws_profile)) > 0, false)
+    error_message = "aws_profile no puede estar vacío; usar null para la cadena de credenciales por defecto."
+  }
+}
+
 variable "project_name" {
   description = "Nombre del proyecto; prefijo de todos los recursos."
   type        = string

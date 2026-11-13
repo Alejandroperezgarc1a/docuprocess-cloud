@@ -55,6 +55,11 @@ output "artifacts_bucket_name" {
   value       = module.storage.artifacts_bucket_name
 }
 
+output "sns_topic_arn" {
+  description = "ARN del tópico de alertas de SNS (worker y alarmas)."
+  value       = module.sns.topic_arn
+}
+
 output "alb_dns_name" {
   description = "DNS público del ALB (A3). Con CloudFront (B7) el acceso normal es por app_url."
   value       = module.compute.alb_dns_name

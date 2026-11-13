@@ -1,8 +1,11 @@
 # Módulo raíz de DocuProcess Cloud.
-# Las credenciales NO están aquí: se leen de ~/.aws/credentials (copiadas de AWS Academy en cada sesión).
+# Las credenciales NO están aquí: se leen de la cadena de credenciales por defecto
+# de AWS ([default] en ~/.aws/credentials, variables de entorno, SSO...). Si se
+# necesita un perfil concreto, se define var.aws_profile (por defecto null).
 
 provider "aws" {
-  region = var.aws_region
+  region  = var.aws_region
+  profile = var.aws_profile
 
   default_tags {
     tags = local.common_tags
@@ -11,7 +14,8 @@ provider "aws" {
 
 # awscc no soporta default_tags: los módulos le pasan local.common_tags explícitamente.
 provider "awscc" {
-  region = var.aws_region
+  region  = var.aws_region
+  profile = var.aws_profile
 }
 
 data "aws_caller_identity" "current" {}
@@ -94,7 +98,15 @@ module "dynamodb" {
   enable_point_in_time_recovery = var.enable_point_in_time_recovery
 }
 
-# --- sns (B4)
+# --- sns (B6)
+
+module "sns" {
+  source = "./modules/sns"
+
+  name_prefix  = local.name_prefix
+  alert_email  = var.alert_email
+  app_role_arn = local.app_role_arn
+}
 
 # --- rds (A5)
 
@@ -116,8 +128,8 @@ locals {
   docs_bucket_name      = module.storage.docs_bucket_name
   artifacts_bucket_name = module.storage.artifacts_bucket_name
 
-  # Pendiente de integrar: B6 (module.sns.topic_arn).
-  sns_topic_arn = ""
+  # B3 ya está integrado; el tópico de alertas de B6 alimenta al worker.
+  sns_topic_arn = module.sns.topic_arn
 
   # B3: la app escribe en dos tablas (estado y bitácora). Estos locales se inyectan en
   # el userData -> /etc/docuprocess.env -> la API los lee como DDB_TABLE y
@@ -221,4 +233,4 @@ module "compute" {
 
 # --- cdn (B5)
 
-# --- monitoring (B9)
+# --- monitoring (B10)
