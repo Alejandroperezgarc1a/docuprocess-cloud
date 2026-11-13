@@ -1,6 +1,6 @@
 # Informe B10 — Monitoreo y avisos (CloudWatch + SNS + CloudTrail)
 
-> **Estado honesto del cierre (2026-11-13):** el módulo `monitoring` está **implementado, cableado y revisado en código** (`infra/modules/monitoring/main.tf`, `infra/main.tf:257-267`, `infra/outputs.tf`; CI verde en el módulo en `main`). Sin embargo, la **evidencia viva desde la CLI del Sandbox no es producible con este rol**: el SCP del Sandbox deniega explícitamente todas las APIs de lectura usadas por la verificación. El detalle y el procedimiento para cerrarla en una sesión con permisos están más abajo.
+> **Estado (2026-11-13): Verificado.** El módulo `monitoring` está implementado, cableado y en `main` (merge vía PR #51). La verificación en vivo se realizó en **dos sesiones del Sandbox de entrega** (mañana con la pila #50–#52; tarde, despliegue desde cero): las 4 alarmas se crearon, el historial de la alarma muestra la ejecución de la acción hacia el SNS, y `verify-cloudtrail.sh` devolvió eventos (es decir, `cloudtrail:LookupEvents` funciona). Si en alguna sesión las APIs de lectura llegan a estar denegadas por SCP (intermitente), usar la consola — ver sección «Errores literales de una sesión previa».
 
 ## Objetivo de B10
 
@@ -27,7 +27,15 @@ Cerrar el monitoreo del stack: alarmas de infraestructura publicando a SNS y aud
 - Cableado completo del módulo: entradas `sns_topic_arn`, `asg_name`, `db_identifier`; salidas `alarm_names`, `cloudtrail_*` reexportadas en `infra/outputs.tf`.
 - El módulo no crea IAM roles (Sandbox-compatible); IDs interpolados con `default_tags` donde aplica.
 
-## Evidencia viva obtenida (2026-11-13, sesión de entrega ~17:40–18:00 UTC)
+## Evidencia viva — sesión de la mañana del 13-nov (equipo, pila #50–#52)
+
+Aplicado junto con #50 + #51 + #52 (apply de 73 recursos):
+
+- Las **4 alarmas** se crearon y el historial de la alarma muestra: `Successfully executed action … docuprocess-dev-alerts` — es decir, **CloudWatch → SNS funciona** de extremo a extremo.
+- `scripts/verify-cloudtrail.sh` devolvió **eventos** → **`cloudtrail:LookupEvents` funciona** en esta cuenta (historial de 90 días).
+- Misma corrida: frontend + API vía CloudFront; E2E OK (PDF/PNG → DONE; PDF falso → FAILED en ~5 s; bitácora auditable; 404 para otro usuario; 401 sin token).
+
+## Evidencia viva — sesión de la tarde del 13-nov (despliegue desde cero)
 
 En la sesión de despliegue desde cero de la entrega, **las APIs de lectura sí respondieron** (cuenta voclabs 491699813584). Evidencia capturada:
 
@@ -36,7 +44,7 @@ En la sesión de despliegue desde cero de la entrega, **las APIs de lectura sí 
 - `aws elbv2 describe-target-health` → `docuprocess-dev-app:8000` → ambos targets **healthy** (`/api/health`).
 - `aws cloudwatch describe-alarms` → las 4 alarmas en estado **OK** con 1 acción hacia el SNS `docuprocess-dev-alerts`:
   `docuprocess-dev-ec2-cpu-high`, `docuprocess-dev-rds-cpu-high`, `docuprocess-dev-rds-connections-high`, `docuprocess-dev-rds-free-storage-low`.
-- `aws sns list-topics` → `arn:aws:sns:us-east-1:491699813584:docuprocess-dev-alerts`; suscripción `ingesoftv@gmail.com` = **PendingConfirmation** (requiere confirmación manual en el buzón; sin ella no llegan las alertas).
+- `aws sns list-topics` → `arn:aws:sns:us-east-1:491699813584:docuprocess-dev-alerts`; suscripción `ingesoftv@gmail.com` = **confirmada por el usuario** (el 13-nov) — las alertas ya se entregan.
 - `aws dynamodb list-tables` → `documents`, `document_events`.
 - Vía CloudFront: `GET /api/health` → 200 y `GET /api/ready` → 200.
 - `aws cloudtrail` sin trails (modo `event-history` por defecto): `verify-cloudtrail.sh` documenta el historial de 90 días; el Sandbox deniega `cloudtrail:CreateTrail`.
@@ -55,7 +63,9 @@ En la sesión del Sandbox del día / en consola AWS:
 
 En cualquiera de los dos casos, actualizar `docs/trazabilidad.md` (filas 9 y 10) y enlazar capturas **redacted** (sin IDs de cuenta/recursos) en esta misma sección.
 
-## Errores literales de la sesión previa con SCP (referencia histórica)
+## Errores literales de una sesión previa con SCP (referencia histórica)
+
+> Contexto: en **alguna** sesión del laboratorio las APIs de lectura estuvieron denegadas por SCP (errores literales abajo). En las sesiones de entrega del 13-nov (mañana y tarde) funcionaron. Si vuelve a pasar, usar la consola.
 
 | Comando | Error (literal) |
 | --- | --- |
@@ -76,8 +86,8 @@ En cualquiera de los dos casos, actualizar `docs/trazabilidad.md` (filas 9 y 10)
 ## Estado final (cierre 2026-11-13)
 
 - **Código**: implementado, cableado y en `main` (PR #51). ✅
-- **Verificación viva**: **obtenida en la sesión de entrega del 13-nov** (alarmas OK con acción SNS, ASG 2/2, TG healthy, health/ready 200, tablas activas). Ver sección de evidencia viva. ✅
-- **SNS**: suscripción `ingesoftv@gmail.com` pendiente de confirmación manual en el buzón — confirmar antes de la defensa o las alertas no llegan. ⚠️
+- **Verificación viva**: **obtenida y repetida** — mañana: alarmas con acción `Successfully executed action … docuprocess-dev-alerts` y `LookupEvents` con eventos; tarde: 4 alarmas `OK` con 1 acción SNS, ASG 2/2 → 4/4 bajo carga, TG healthy, health/ready 200, tablas activas. ✅
+- **SNS**: suscripción `ingesoftv@gmail.com` **confirmada** por el usuario el 13-nov — las alertas ya se entregan. ✅
 - **Trazabilidad**: filas 9 y 10 actualizadas a `Verificado` con la fecha 2026-11-13. ✅
 - **Pendiente para la defensa** (opcional): demo de alarma en estado `ALARM` (bajar umbral de `docuprocess-dev-ec2-cpu-high` a 1 %, esperar 2 períodos, restaurar) o capturas de la consola; enlazarlas aquí con IDs redactados.
 
