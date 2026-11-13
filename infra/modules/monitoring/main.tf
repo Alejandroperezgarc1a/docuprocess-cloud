@@ -230,7 +230,7 @@ resource "terraform_data" "empty_cloudtrail_bucket" {
 
   input = {
     region = "us-east-1"
-    script = abspath("${path.root}/../../scripts/empty-bucket.sh")
+    script = abspath("${path.root}/../scripts/empty-bucket.sh")
   }
 
   depends_on = [awscc_s3_bucket.cloudtrail]
