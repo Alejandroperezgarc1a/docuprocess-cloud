@@ -89,6 +89,47 @@ export function isConditionalCheckFailure(error: unknown): boolean {
   return false;
 }
 
+/**
+ * Transaccion cancelada por un conflicto transitorio con otra transaccion sobre el mismo item
+ * (p. ej., el claim de otro worker en el mismo instante). A diferencia de ConditionalCheckFailed,
+ * no significa que otro gano: hay que reintentar. El SDK no la reintenta por su cuenta.
+ */
+export function isTransactionConflict(error: unknown): boolean {
+  if (errorName(error) !== 'TransactionCanceledException') {
+    return false;
+  }
+  const reasons = (error as { CancellationReasons?: Array<{ Code?: string }> })
+    .CancellationReasons;
+  return (
+    (reasons?.some((reason) => reason.Code === 'TransactionConflict') ?? false) &&
+    !isConditionalCheckFailure(error)
+  );
+}
+
+/**
+ * Ejecuta `operation` y la reintenta con espera creciente mientras falle por TransactionConflict.
+ * Las transiciones son condicionales e idempotentes (mismo evento, misma clave), asi que repetirlas
+ * es seguro. Cualquier otro error, o el ultimo intento, se propaga.
+ */
+export async function withConflictRetry<T>(
+  operation: () => Promise<T>,
+  attempts = 5,
+  baseDelayMs = 50,
+  sleep: (ms: number) => Promise<void> = (ms) =>
+    new Promise((resolve) => setTimeout(resolve, ms)),
+): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (attempt >= attempts || !isTransactionConflict(error)) {
+        throw error;
+      }
+      await sleep(baseDelayMs * 2 ** (attempt - 1) + Math.floor(Math.random() * baseDelayMs));
+    }
+  }
+}
+
 /** 403 y 404 significan que el objeto aun no es accesible; el resto se propaga. */
 export function isObjectUnavailable(error: unknown): boolean {
   const status = httpStatusCode(error);
@@ -180,13 +221,15 @@ export function createAwsService(
 
     try {
       if (config.ddbTransactions) {
-        await ddb.send(
-          new TransactWriteCommand({
-            TransactItems: [
-              { Update: update as TransactWriteUpdate },
-              { Put: eventPut },
-            ],
-          }),
+        await withConflictRetry(() =>
+          ddb.send(
+            new TransactWriteCommand({
+              TransactItems: [
+                { Update: update as TransactWriteUpdate },
+                { Put: eventPut },
+              ],
+            }),
+          ),
         );
       } else {
         await ddb.send(new UpdateCommand(update));
