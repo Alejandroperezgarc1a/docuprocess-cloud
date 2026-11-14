@@ -53,6 +53,16 @@ export interface GpsMetadata {
   latitude: number;
   longitude: number;
   altitude?: number;
+  /** Precisión de la posición (DOP). */
+  dop?: number;
+  /** Velocidad en m/s. */
+  speed?: number;
+  /** Dirección de la imagen en grados. */
+  imgDirection?: number;
+  /** Sello de tiempo GPS combinado (fecha + hora). */
+  timestamp?: string;
+  /** Método de procesamiento GPS. */
+  processingMethod?: string;
 }
 
 export interface ExifMetadata {
@@ -77,6 +87,38 @@ export interface ExifMetadata {
   whiteBalance?: string;
   meteringMode?: string;
   exposureProgram?: string;
+  /** Resolución horizontal en DPI. */
+  xResolution?: number;
+  /** Resolución vertical en DPI. */
+  yResolution?: number;
+  /** Unidad de resolución: 2 = pulgadas, 3 = cm. */
+  resolutionUnit?: number;
+  /** Compensación de exposición en EV. */
+  exposureCompensation?: number;
+  /** Apertura máxima del objetivo. */
+  maxAperture?: number;
+  /** Distancia al sujeto en metros. */
+  subjectDistance?: number;
+  /** Fabricante del objetivo. */
+  lensMake?: string;
+  /** Número de serie del objetivo. */
+  lensSerialNumber?: string;
+  /** Número de serie del cuerpo de la cámara. */
+  bodySerialNumber?: string;
+  /** Tipo de captura de escena. */
+  sceneCaptureType?: string;
+  /** Contraste: 0=Normal, 1=Suave, 2=Duro. */
+  contrast?: number;
+  /** Saturación: 0=Normal, 1=Baja, 2=Alta. */
+  saturation?: number;
+  /** Nitidez: 0=Normal, 1=Suave, 2=Dura. */
+  sharpness?: number;
+  /** Fuente de luz. */
+  lightSource?: string;
+  /** Ratio de zoom digital. */
+  digitalZoomRatio?: number;
+  /** Versión EXIF. */
+  exifVersion?: string;
 }
 
 export interface TextChunk {
@@ -95,6 +137,20 @@ export interface ImageMetadata {
   hasAlpha?: boolean;
   interlaced?: boolean;
   dpi?: number;
+  /** Gamma del archivo PNG. */
+  gamma?: number;
+  /** Intención de renderizado sRGB. */
+  srgbIntent?: number;
+  /** Si tiene perfil ICC embebido. */
+  hasIccProfile?: boolean;
+  /** Método de compresión (PNG). */
+  compressionMethod?: number;
+  /** Método de filtro (PNG). */
+  filterMethod?: number;
+  /** Marca de tiempo del archivo (chunk tIME). */
+  lastModified?: string;
+  /** Color de fondo (chunk bKGD). */
+  backgroundColor?: string;
   textChunks?: TextChunk[];
   exif?: ExifMetadata;
   gps?: GpsMetadata;
@@ -112,6 +168,14 @@ export interface TextMetadata {
   pagesAnalyzed?: number;
   truncated: boolean;
   preview?: string;
+  /** Palabras únicas (aproximación). */
+  uniqueWords?: number;
+  /** Media de palabras por oración. */
+  avgWordsPerSentence?: number;
+  /** Longitud media de frase en caracteres. */
+  avgSentenceLength?: number;
+  /** Idioma estimado (heurística simple: 'es' | 'en' | 'mixed'). */
+  language?: string;
 }
 
 export interface SourceMetadata {
@@ -120,6 +184,12 @@ export interface SourceMetadata {
   storageClass?: string;
   serverSideEncryption?: string;
   lastModified?: string;
+  /** Clave S3 completa (bucket + ruta). */
+  key?: string;
+  /** MIME declarado por el cliente al subir. */
+  declaredMimeType?: string;
+  /** true si el MIME declarado difiere del detectado. */
+  mimeMismatch?: boolean;
 }
 
 export interface DocumentMetadata {
@@ -143,6 +213,7 @@ export interface DocumentResult {
   height?: number;
   /** Resumen extractivo del texto (solo TXT y PDF con texto seleccionable). */
   summary?: string;
+  /** Versión del esquema de metadatos (3 = GPS ampliado + EXIF/PNG/texto extra). */
   metadataVersion?: number;
   processedAt?: string;
   processingMs?: number;

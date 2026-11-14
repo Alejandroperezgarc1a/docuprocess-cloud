@@ -6,7 +6,7 @@ import { imageSize } from 'image-size';
 import { PDFDocument } from 'pdf-lib';
 import { extractText, getDocumentProxy } from 'unpdf';
 import exifr from 'exifr';
-import { cleanExtractedText, summarizeText, textWords } from './summarize.js';
+import { cleanExtractedText, summarizeText, textWords, splitSentences, normalizeWord } from './summarize.js';
 import type {
   DocumentMetadata,
   DocumentResult,
@@ -165,6 +165,16 @@ function isoDate(value: unknown): string | undefined {
     return value.toISOString();
   }
   if (typeof value === 'string' || typeof value === 'number') {
+    const s = String(value).trim();
+    const exif = /^(\d{4}):(\d{2}):(\d{2})(?:[ T](\d{2}):(\d{2}):(\d{2}))?$/.exec(s);
+    if (exif) {
+      const [, year, month, day, hour = '00', minute = '00', second = '00'] = exif;
+      const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)));
+      if (Number.isFinite(date.getTime())) {
+        return date.toISOString();
+      }
+      return undefined;
+    }
     const date = new Date(value);
     if (Number.isFinite(date.getTime())) {
       return date.toISOString();
@@ -199,6 +209,20 @@ function newlineKind(value: string): string {
   return 'LF';
 }
 
+/** Detecta el idioma del texto mediante heurística de stopwords (ES vs EN). */
+function detectLanguage(value: string): string | undefined {
+  const words = textWords(value.toLowerCase());
+  if (words.length < 50) return undefined; // Texto muy corto, no confiable
+  
+  const esCount = words.filter(w => ['el', 'la', 'de', 'que', 'y', 'en', 'un', 'ser', 'se', 'no', 'haber', 'por', 'con', 'su', 'para', 'es', 'como', 'lo', 'su', 'al', 'del', 'las', 'una', 'pero', 'sus', 'le', 'ya', 'o', 'este', 'sí', 'porque'].includes(w)).length;
+  const enCount = words.filter(w => ['the', 'of', 'and', 'a', 'to', 'in', 'is', 'you', 'that', 'it', 'he', 'was', 'for', 'on', 'are', 'as', 'with', 'his', 'they', 'i', 'at', 'be', 'this', 'have', 'from', 'or', 'one', 'had', 'by', 'word', 'but', 'not', 'what', 'all', 'were', 'we', 'when', 'your', 'can', 'said', 'there', 'use', 'an', 'each'].includes(w)).length;
+  
+  if (esCount > enCount * 1.5) return 'es';
+  if (enCount > esCount * 1.5) return 'en';
+  if (esCount > 0 && enCount > 0) return 'mixed';
+  return undefined;
+}
+
 function buildTextMetadata(
   value: string,
   source: 'txt' | 'pdf',
@@ -220,13 +244,21 @@ function buildTextMetadata(
     .filter((paragraph) => paragraph.trim().length > 0).length;
   const previewSource = options.previewText ?? analysis;
 
+  // Métricas de lectura adicionales
+  const wordsList = textWords(analysis);
+  const uniqueWords = new Set(wordsList.map(normalizeWord)).size;
+  const sentences = splitSentences(analysis);
+  const avgWordsPerSentence = sentences.length > 0 ? wordsList.length / sentences.length : 0;
+  const avgSentenceLength = sentences.length > 0 ? analysis.length / sentences.length : 0;
+  const language = detectLanguage(analysis);
+
   return {
     source,
     encoding: 'utf-8',
     bom: options.bom ?? false,
     newline: newlineKind(analysis),
     lines,
-    words: textWords(analysis).length,
+    words: wordsList.length,
     characters: truncatedChars.length,
     paragraphs,
     ...(options.pagesAnalyzed !== undefined
@@ -234,6 +266,10 @@ function buildTextMetadata(
       : {}),
     truncated: (options.truncated ?? false) || truncatedChars.length > MAX_ANALYSIS_CHARS,
     preview: truncate(previewSource.replace(/\s+/g, ' ').trim(), PREVIEW_MAX_CHARS),
+    uniqueWords,
+    avgWordsPerSentence: Math.round(avgWordsPerSentence * 100) / 100,
+    avgSentenceLength: Math.round(avgSentenceLength * 100) / 100,
+    language,
   };
 }
 
@@ -247,6 +283,20 @@ interface PngInfo {
   hasAlpha?: boolean;
   interlaced?: boolean;
   dpi?: number;
+  /** Gamma del archivo PNG. */
+  gamma?: number;
+  /** Intención de renderizado sRGB. */
+  srgbIntent?: number;
+  /** Si tiene perfil ICC embebido. */
+  hasIccProfile?: boolean;
+  /** Método de compresión (PNG). */
+  compressionMethod?: number;
+  /** Método de filtro (PNG). */
+  filterMethod?: number;
+  /** Marca de tiempo del archivo (chunk tIME). */
+  lastModified?: string;
+  /** Color de fondo (chunk bKGD). */
+  backgroundColor?: string;
   textChunks?: TextChunk[];
 }
 
@@ -280,12 +330,38 @@ function parsePng(bytes: Buffer): PngInfo {
         PNG_COLOR_TYPES[colorTypeValue] ?? `Desconocido (${colorTypeValue})`;
       info.interlaced = data.readUInt8(12) !== 0;
       hasAlpha = colorTypeValue === 4 || colorTypeValue === 6;
+      // IHDR también contiene método de compresión (siempre 0), filtro (siempre 0) e interlace
+      info.compressionMethod = data.readUInt8(10);
+      info.filterMethod = data.readUInt8(11);
     } else if (type === 'pHYs' && data.length >= 9) {
       const pixelsPerMeterX = data.readUInt32BE(0);
       const unit = data[8];
       if (unit === 1 && pixelsPerMeterX > 0) {
         info.dpi = Math.round(pixelsPerMeterX * 0.0254);
       }
+    } else if (type === 'gAMA' && data.length >= 4) {
+      // Gamma almacenado como 100000 * gamma
+      const gamma = data.readUInt32BE(0);
+      if (gamma > 0) info.gamma = Math.round((gamma / 100000) * 1000) / 1000;
+    } else if (type === 'sRGB' && data.length >= 1) {
+      // 0 = perceptual, 1 = relative colorimetric, 2 = saturation, 3 = absolute colorimetric
+      info.srgbIntent = data[0];
+    } else if (type === 'iCCP') {
+      info.hasIccProfile = true;
+    } else if (type === 'tIME' && data.length >= 7) {
+      // tIME: año (2 bytes), mes, día, hora, min, seg
+      const year = data.readUInt16BE(0);
+      const month = data[2];
+      const day = data[3];
+      const hour = data[4];
+      const minute = data[5];
+      const second = data[6];
+      if (month !== undefined && day !== undefined && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        info.lastModified = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}Z`;
+      }
+    } else if (type === 'bKGD' && data.length >= 1) {
+      // Color de fondo (simplificado: solo almacenamos que existe)
+      info.backgroundColor = 'presente';
     } else if (type === 'tRNS') {
       hasAlpha = true;
     } else if (type === 'tEXt' || type === 'iTXt') {
@@ -420,6 +496,24 @@ async function extractExif(bytes: Buffer): Promise<{
   const metering = finiteNumber(parsed.MeteringMode);
   const program = finiteNumber(parsed.ExposureProgram);
 
+  // Nuevos campos EXIF ampliados
+  const xResolution = finiteNumber(parsed.XResolution);
+  const yResolution = finiteNumber(parsed.YResolution);
+  const resolutionUnit = finiteNumber(parsed.ResolutionUnit);
+  const exposureCompensation = finiteNumber(parsed.ExposureBiasValue);
+  const maxAperture = finiteNumber(parsed.MaxApertureValue);
+  const subjectDistance = finiteNumber(parsed.SubjectDistance);
+  const lensMake = cleanString(parsed.LensMake, 120);
+  const lensSerialNumber = cleanString(parsed.LensSerialNumber, 80);
+  const bodySerialNumber = cleanString(parsed.BodySerialNumber ?? parsed.SerialNumber, 80);
+  const sceneCaptureType = finiteNumber(parsed.SceneCaptureType);
+  const contrast = finiteNumber(parsed.Contrast);
+  const saturation = finiteNumber(parsed.Saturation);
+  const sharpness = finiteNumber(parsed.Sharpness);
+  const lightSource = finiteNumber(parsed.LightSource);
+  const digitalZoomRatio = finiteNumber(parsed.DigitalZoomRatio);
+  const exifVersion = cleanString(parsed.ExifVersion, 20);
+
   const exif = pruneUndefined({
     make: cleanString(parsed.Make, 120),
     model: cleanString(parsed.Model, 120),
@@ -453,12 +547,113 @@ async function extractExif(bytes: Buffer): Promise<{
           : 'Manual',
     meteringMode: metering === undefined ? undefined : `Modo ${metering}`,
     exposureProgram: program === undefined ? undefined : `Programa ${program}`,
+    xResolution,
+    yResolution,
+    resolutionUnit,
+    exposureCompensation,
+    maxAperture,
+    subjectDistance,
+    lensMake,
+    lensSerialNumber,
+    bodySerialNumber,
+    sceneCaptureType:
+      sceneCaptureType === undefined
+        ? undefined
+        : sceneCaptureType === 0
+          ? 'Estándar'
+          : sceneCaptureType === 1
+            ? 'Paisaje'
+            : sceneCaptureType === 2
+              ? 'Retrato'
+              : sceneCaptureType === 3
+                ? 'Nocturno'
+                : undefined,
+    contrast:
+      contrast === undefined
+        ? undefined
+        : contrast === 0
+          ? 'Normal'
+          : contrast === 1
+            ? 'Suave'
+            : contrast === 2
+              ? 'Duro'
+              : undefined,
+    saturation:
+      saturation === undefined
+        ? undefined
+        : saturation === 0
+          ? 'Normal'
+          : saturation === 1
+            ? 'Baja'
+            : saturation === 2
+              ? 'Alta'
+              : undefined,
+    sharpness:
+      sharpness === undefined
+        ? undefined
+        : sharpness === 0
+          ? 'Normal'
+          : sharpness === 1
+            ? 'Suave'
+            : sharpness === 2
+              ? 'Dura'
+              : undefined,
+    lightSource:
+      lightSource === undefined
+        ? undefined
+        : lightSource === 0
+          ? 'Desconocida'
+          : lightSource === 1
+            ? 'Luz diurna'
+            : lightSource === 2
+              ? 'Fluorescente'
+              : lightSource === 3
+                ? 'Tungsteno'
+                : lightSource === 4
+                  ? 'Flash'
+                  : lightSource === 9
+                    ? 'Buen tiempo'
+                    : lightSource === 10
+                      ? 'Nublado'
+                      : lightSource === 11
+                        ? 'Sombra'
+                        : lightSource === 17
+                          ? 'Luz estándar A'
+                          : lightSource === 18
+                            ? 'Luz estándar B'
+                            : lightSource === 19
+                              ? 'Luz estándar C'
+                              : lightSource === 20
+                                ? 'D55'
+                                : lightSource === 21
+                                  ? 'D65'
+                                  : lightSource === 22
+                                    ? 'D75'
+                                    : lightSource === 23
+                                      ? 'D50'
+                                      : undefined,
+    digitalZoomRatio,
+    exifVersion,
   }) as ExifMetadata;
 
   const latitude = finiteNumber(parsed.latitude);
   const longitude = finiteNumber(parsed.longitude);
   const altitudeRaw = finiteNumber(parsed.GPSAltitude);
   const altitudeRef = finiteNumber(parsed.GPSAltitudeRef);
+  const dop = finiteNumber(parsed.GPSDOP);
+  const speed = finiteNumber(parsed.GPSSpeed);
+  const imgDirection = finiteNumber(parsed.GPSImgDirection);
+  const timestamp = isoDate(parsed.GPSDateStamp);
+  const processingMethodRaw = parsed.GPSProcessingMethod;
+  const processingMethod = cleanString(
+    typeof processingMethodRaw === 'string'
+      ? processingMethodRaw
+      : processingMethodRaw instanceof Uint8Array || Array.isArray(processingMethodRaw)
+        ? Buffer.from(processingMethodRaw as Uint8Array).toString('latin1')
+        : undefined,
+    80,
+  );
+
   const gps =
     latitude !== undefined &&
     longitude !== undefined &&
@@ -473,6 +668,11 @@ async function extractExif(bytes: Buffer): Promise<{
               : altitudeRef === 1
                 ? -altitudeRaw
                 : altitudeRaw,
+          dop,
+          speed,
+          imgDirection,
+          timestamp,
+          processingMethod,
         })
       : undefined;
 
@@ -722,7 +922,7 @@ export async function extractMetadata(
     sizeBytes: info.size,
     mimeType,
     ...hashes,
-    metadataVersion: 2,
+    metadataVersion: 3,
   };
   const metadata: DocumentMetadata = {
     file: {
@@ -782,6 +982,13 @@ export async function extractMetadata(
       image.hasAlpha = png.hasAlpha;
       image.interlaced = png.interlaced;
       image.dpi = png.dpi;
+      image.gamma = png.gamma;
+      image.srgbIntent = png.srgbIntent;
+      image.hasIccProfile = png.hasIccProfile;
+      image.compressionMethod = png.compressionMethod;
+      image.filterMethod = png.filterMethod;
+      image.lastModified = png.lastModified;
+      image.backgroundColor = png.backgroundColor;
       image.textChunks = png.textChunks;
     } else {
       const jpeg = parseJpeg(bytes);

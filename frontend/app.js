@@ -99,7 +99,14 @@ const LABELS = {
     bitDepth: "Profundidad",
     hasAlpha: "Canal alfa",
     interlaced: "Entrelazado",
-    dpi: "Resolución"
+    dpi: "Resolución",
+    gamma: "Gamma",
+    srgbIntent: "Intención sRGB",
+    hasIccProfile: "Perfil ICC",
+    compressionMethod: "Compresión PNG",
+    filterMethod: "Filtro PNG",
+    lastModified: "Fecha del archivo",
+    backgroundColor: "Color de fondo"
   },
   text: {
     source: "Origen",
@@ -111,14 +118,21 @@ const LABELS = {
     characters: "Caracteres",
     paragraphs: "Párrafos",
     pagesAnalyzed: "Páginas analizadas",
-    truncated: "Análisis truncado"
+    truncated: "Análisis truncado",
+    uniqueWords: "Palabras únicas",
+    avgWordsPerSentence: "Palabras por oración",
+    avgSentenceLength: "Longitud de frase",
+    language: "Idioma"
   },
   source: {
     eTag: "ETag",
     versionId: "Versión S3",
     storageClass: "Clase de almacenamiento",
     serverSideEncryption: "Cifrado en reposo",
-    lastModified: "Modificado en S3"
+    lastModified: "Modificado en S3",
+    key: "Clave S3",
+    declaredMimeType: "MIME declarado",
+    mimeMismatch: "Difiere el MIME"
   },
   exif: {
     make: "Fabricante",
@@ -141,7 +155,23 @@ const LABELS = {
     flash: "Flash",
     whiteBalance: "Balance de blancos",
     meteringMode: "Medición",
-    exposureProgram: "Programa"
+    exposureProgram: "Programa",
+    xResolution: "Resolución horizontal",
+    yResolution: "Resolución vertical",
+    resolutionUnit: "Unidad de resolución",
+    exposureCompensation: "Compensación de exposición",
+    maxAperture: "Apertura máxima",
+    subjectDistance: "Distancia al sujeto",
+    lensMake: "Fabricante del objetivo",
+    lensSerialNumber: "Serie del objetivo",
+    bodySerialNumber: "Serie del cuerpo",
+    sceneCaptureType: "Tipo de captura",
+    contrast: "Contraste",
+    saturation: "Saturación",
+    sharpness: "Nitidez",
+    lightSource: "Fuente de luz",
+    digitalZoomRatio: "Zoom digital",
+    exifVersion: "Versión EXIF"
   },
   processing: {
     metadataVersion: "Versión de metadatos",
@@ -1805,14 +1835,19 @@ function renderGpsSection(gps) {
   const longitude = Number(gps.longitude);
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
 
-  const section = createMetadataSection("Ubicación GPS");
+  const section = createMetadataSection("Subido desde");
   const list = document.createElement("dl");
   list.className = "detail-grid";
 
-  addDetailRow(list, "Latitud", latitude.toFixed(6));
-  addDetailRow(list, "Longitud", longitude.toFixed(6));
+  addDetailRow(list, "Coordenadas", `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
   if (gps.altitude !== undefined && gps.altitude !== null) {
     addDetailRow(list, "Altitud", `${Number(gps.altitude).toFixed(1)} m`);
+  }
+  if (gps.dop !== undefined && gps.dop !== null) {
+    addDetailRow(list, "Precisión", `${Number(gps.dop).toFixed(1)} DOP`);
+  }
+  if (gps.timestamp) {
+    addDetailRow(list, "Hora de captura", formatDate(gps.timestamp));
   }
 
   const link = document.createElement("a");

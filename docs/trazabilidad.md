@@ -53,7 +53,7 @@
 | Política de recurso con las acciones mínimas | `aws_dynamodb_resource_policy` en el módulo; Sandbox: políticas creadas tras quitar `dynamodb:TransactWriteItems` | Verificado (Sandbox) | 2026-11-12 |
 | Endpoint de bitácora y alta transaccional | `app/api/src/documents.ts`, `aws.ts`; tests; Sandbox: trail `PENDING → PROCESSING → DONE` y 404 para otro usuario | Verificado (tests + Sandbox) | 2026-11-12 |
 | `npm run typecheck`, `npm run build`, `npm test` | 68 pruebas en verde | Verificado | 2026-11-12 |
-| Metadatos técnicos completos, resumen y vista previa | Worker: PDF (versión, páginas, tamaños, autor/título/fechas), TXT (BOM/CRLF, estadísticas, resumen), PNG; API: `GET /api/documents/{id}/download` con 200/404/409/503; frontend: línea de vida, resumen, preview y metadatos | Verificado (102 pruebas: 72 API + 30 worker) | 2026-11-13 |
+| Metadatos técnicos completos, resumen y vista previa | Worker: PDF (versión, páginas, tamaños, autor/título/fechas), TXT (BOM/CRLF, estadísticas, resumen, métricas e idioma), PNG y JPEG (chunks PNG, EXIF/GPS ampliado); API: `GET /api/documents/{id}/download` con 200/404/409/503; frontend: línea de vida, resumen, preview y metadatos ("Subido desde" si hay GPS) | Verificado (123 pruebas: 72 API + 51 worker) | 2026-11-13 |
 | ShellCheck del userData | `shellcheck` sobre las dos variantes renderizadas (provisional y con artefacto) | Verificado | 2026-11-11 |
 
 ## 4. Despliegue C3 (2026-11-13, cuenta `<AWS_ACCOUNT_ID>`)
@@ -87,7 +87,6 @@ Rama `feat/C3-integracion-e2e-una-sola-cuenta`; PR #50 (Closes #16). Aplicado, p
 | SCP deniega `dynamodb:PutResourcePolicy` | El rol no puede leer/escribir las tablas | No hay plan B sin IAM propio; habría que escalar el permiso al administrador del Sandbox |
 | Una política llegara a denegar las escrituras de ítems de la transacción (`PutItem`/`UpdateItem`) | El alta no es atómica | `enable_dynamodb_transactions = false` (escritura secuencial; deuda documentada en §12). En el Sandbox no ocurre: las transacciones funcionan |
 | Sandbox deniega `point_in_time_recovery` | Sin restauración a un segundo | `enable_point_in_time_recovery = false` |
-| El worker aún no está fusionado en `main` | No hay transiciones `PROCESSING/DONE/FAILED` en la rama base | B5/B6 integran el worker; la bitácora ya tiene el contrato y el endpoint |
 | Fechas y horas reales de la tarea | El tablero puede quedar desactualizado | Issue #7 actualizada al cerrar (formato `YYYY-MM-DD`); el Project no es visible con el token actual |
 | Reinicio del laboratorio borra recursos y deja el estado obsoleto | `plan/apply` y el despliegue fallan o apuntan a recursos inexistentes | Usar `AWS_PROFILE=academy`; refrescar el estado (`plan -refresh=true`) y reaplicar; el script valida la cuenta y falla antes de escribir si no coincide |
 | `infra/terraform.tfvars` no se versiona (existe localmente) | El despliegue no es reproducible solo con el repo | Copiar `terraform.tfvars.example`, completar secretos y correo, y mantenerlo fuera de Git |

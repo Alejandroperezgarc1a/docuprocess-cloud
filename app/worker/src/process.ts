@@ -258,6 +258,9 @@ export async function processItem(
           ? { serverSideEncryption: head.serverSideEncryption }
           : {}),
         ...(head.lastModified !== undefined ? { lastModified: head.lastModified } : {}),
+        key: item.s3Key,
+        declaredMimeType: item.contentType,
+        mimeMismatch: result.mimeType !== item.contentType,
       };
     }
     const completedAt = deps.now?.() ?? new Date();

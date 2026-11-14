@@ -367,7 +367,7 @@ vive en `metadata`. Los campos opcionales se omiten cuando no aplican.
   "md5": "…32 hex…",
   "pages": 3,
   "summary": "Resumen extractivo de hasta 600 caracteres…",
-  "metadataVersion": 2,
+  "metadataVersion": 3,
   "processedAt": "2026-11-13T15:04:05.000Z",
   "processingMs": 812,
   "metadataTruncated": false,
@@ -385,18 +385,22 @@ vive en `metadata`. Los campos opcionales se omiten cuando no aplican.
       "format": "JPEG", "width": 4032, "height": 3024, "aspectRatio": 1.33,
       "megapixels": 12.2, "colorType": "YCbCr", "bitDepth": 8, "hasAlpha": false,
       "interlaced": false, "dpi": 72,
+      "gamma": 0.45455, "srgbIntent": 3, "hasIccProfile": true,
+      "compressionMethod": 0, "filterMethod": 0, "lastModified": "…", "backgroundColor": "…",
       "textChunks": [{ "keyword": "Comment", "text": "…" }],
-      "exif": { "make": "Apple", "model": "iPhone 13", "dateTimeOriginal": "…", "iso": 64, "fNumber": 1.6, "focalLength": 5.1, "orientation": 6 },
-      "gps": { "latitude": 3.45, "longitude": -76.53, "altitude": 1000 }
+      "exif": { "make": "Apple", "model": "iPhone 13", "dateTimeOriginal": "…", "iso": 64, "fNumber": 1.6, "focalLength": 5.1, "orientation": 6, "lensModel": "…", "bodySerialNumber": "…" },
+      "gps": { "latitude": 3.45, "longitude": -76.53, "altitude": 1000, "dop": 1.2, "speed": 0.0, "imgDirection": 0, "timestamp": "…", "processingMethod": "GPS" }
     },
     "text": {
       "source": "pdf", "encoding": "utf-8", "bom": false, "newline": "LF",
       "lines": 120, "words": 950, "characters": 6200, "paragraphs": 14,
-      "pagesAnalyzed": 3, "truncated": false, "preview": "Primeros 400 caracteres…"
+      "pagesAnalyzed": 3, "truncated": false, "preview": "Primeros 400 caracteres…",
+      "uniqueWords": 480, "avgWordsPerSentence": 18.4, "avgSentenceLength": 96.1, "language": "es"
     },
     "source": {
       "eTag": "…", "versionId": "…", "storageClass": "STANDARD",
-      "serverSideEncryption": "AES256", "lastModified": "…"
+      "serverSideEncryption": "AES256", "lastModified": "…",
+      "key": "uploads/{userId}/{documentId}/{filename}", "declaredMimeType": "…", "mimeMismatch": false
     }
   }
 }
@@ -414,8 +418,18 @@ Reglas del contrato:
   completo.
 - El análisis de texto se limita a 40 páginas de PDF o 200 000 caracteres de TXT. Los indicadores
   `text.pagesAnalyzed` y `text.truncated` informan el recorte.
-- `image.exif` y `image.gps` solo existen para JPEG con EXIF. `gps` se muestra en la app porque
-  el usuario lo pidió explícitamente; conviene tratarlo como dato sensible.
+- `image.exif` y `image.gps` solo existen para JPEG con EXIF. `gps` incluye `dop`, `speed`,
+  `imgDirection`, `timestamp` y `processingMethod` cuando el archivo los trae; la app lo muestra
+  en la tarjeta "Subido desde" porque el usuario lo pidió explícitamente; conviene tratarlo
+  como dato sensible.
+- `image.gamma`, `image.srgbIntent`, `image.hasIccProfile`, `image.compressionMethod`,
+  `image.filterMethod`, `image.lastModified` e `image.backgroundColor` solo existen en PNG
+  (chunks `gAMA`, `sRGB`, `iCCP`, `IHDR`, `tIME`, `bKGD`).
+- `text.uniqueWords`, `text.avgWordsPerSentence`, `text.avgSentenceLength` e `text.language`
+  solo existen para TXT y PDF con texto seleccionable; `language` es una heurística simple
+  (`es` | `en` | `mixed`).
+- `source.key`, `source.declaredMimeType` y `source.mimeMismatch` informan la clave S3 completa,
+  el MIME declarado por el cliente al subir y si difiere del detectado.
 - `metadataTruncated` indica que el worker eliminó detalles voluminosos (`pdf.pageSizes`,
   `text.preview`, `image.exif`, `image.textChunks`, `pdf.keywords`, `metadata.text` o
   `image.gps`) para no superar el límite de 400 KB por ítem de DynamoDB. Los campos de primer
