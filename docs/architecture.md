@@ -6,7 +6,7 @@
 
 ### Diagrama de arquitectura en AWS
 
-![Arquitectura de DocuProcess Cloud en AWS](img/docuprocess-aws.png)
+![Arquitectura de DocuProcess Cloud en AWS](img/docuprocess-aws-architecture.png)
 
 Vista con los íconos oficiales de AWS: región, VPC, las dos zonas de disponibilidad con sus subredes públicas y privadas, el Auto Scaling group y los servicios administrados. La fuente editable está en [`img/docuprocess-aws.drawio`](img/docuprocess-aws.drawio) (se abre con draw.io / diagrams.net). El diagrama Mermaid de la sección siguiente muestra el mismo despliegue con el detalle de puertos y security groups.
 
