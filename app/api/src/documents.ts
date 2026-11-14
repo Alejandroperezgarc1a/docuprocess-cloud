@@ -241,6 +241,84 @@ export function registerDocumentRoutes(
     res.status(200).json(item);
   });
 
+  // URL firmada de lectura para la vista previa embebida del modal. La API no
+  // proxya los bytes: valida propiedad y delega la descarga a S3 con expiracion corta.
+  app.get('/api/documents/:documentId/download', auth, async (req, res) => {
+    const userId = req.userId;
+    if (userId === undefined) {
+      errorResponse(res, 'unauthorized', 'Falta el token Bearer.', 401);
+      return;
+    }
+
+    const rawDocumentId = req.params.documentId;
+    const documentId = typeof rawDocumentId === 'string' ? rawDocumentId : '';
+    if (!UUID_RE.test(documentId)) {
+      errorResponse(res, 'not_found', 'Documento no encontrado.', 404);
+      return;
+    }
+
+    let item: DocumentItem | undefined;
+    try {
+      item = await aws.getDocument(documentId);
+    } catch (error) {
+      console.error(
+        `${new Date().toISOString()} ERROR docuprocess.api: no se pudo leer el documento para la vista previa:`,
+        error,
+      );
+      errorResponse(
+        res,
+        'storage_unavailable',
+        'No se pudo preparar la vista previa.',
+        503,
+      );
+      return;
+    }
+
+    if (item === undefined || item.userId !== userId) {
+      errorResponse(res, 'not_found', 'Documento no encontrado.', 404);
+      return;
+    }
+
+    if (item.status !== 'DONE') {
+      errorResponse(
+        res,
+        'not_ready',
+        'El documento aun no esta listo para previsualizarse.',
+        409,
+      );
+      return;
+    }
+
+    let url: string;
+    try {
+      url = await aws.presignDownload(
+        item.s3Key,
+        item.filename,
+        item.contentType,
+      );
+    } catch (error) {
+      console.error(
+        `${new Date().toISOString()} ERROR docuprocess.api: no se pudo firmar la vista previa:`,
+        error,
+      );
+      errorResponse(
+        res,
+        'storage_unavailable',
+        'No se pudo preparar la vista previa.',
+        503,
+      );
+      return;
+    }
+
+    res.status(200).json({
+      url,
+      expiresIn: PRESIGN_EXPIRES_SECONDS,
+      method: 'GET',
+      filename: item.filename,
+      contentType: item.contentType,
+    });
+  });
+
   // Bitácora auditable del documento. Se lee de document_events (append-only), no del ítem
   // documents: así el historial no se puede reescribir y sobrevive a cambios de estado.
   app.get('/api/documents/:documentId/events', auth, async (req, res) => {

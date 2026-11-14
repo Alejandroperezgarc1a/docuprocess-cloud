@@ -53,6 +53,7 @@
 | Política de recurso con las acciones mínimas | `aws_dynamodb_resource_policy` en el módulo; Sandbox: políticas creadas tras quitar `dynamodb:TransactWriteItems` | Verificado (Sandbox) | 2026-11-12 |
 | Endpoint de bitácora y alta transaccional | `app/api/src/documents.ts`, `aws.ts`; tests; Sandbox: trail `PENDING → PROCESSING → DONE` y 404 para otro usuario | Verificado (tests + Sandbox) | 2026-11-12 |
 | `npm run typecheck`, `npm run build`, `npm test` | 68 pruebas en verde | Verificado | 2026-11-12 |
+| Metadatos técnicos completos, resumen y vista previa | Worker: PDF (versión, páginas, tamaños, autor/título/fechas), TXT (BOM/CRLF, estadísticas, resumen), PNG; API: `GET /api/documents/{id}/download` con 200/404/409/503; frontend: línea de vida, resumen, preview y metadatos | Verificado (102 pruebas: 72 API + 30 worker) | 2026-11-13 |
 | ShellCheck del userData | `shellcheck` sobre las dos variantes renderizadas (provisional y con artefacto) | Verificado | 2026-11-11 |
 
 ## 4. Despliegue C3 (2026-11-13, cuenta `<AWS_ACCOUNT_ID>`)

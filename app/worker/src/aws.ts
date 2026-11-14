@@ -34,6 +34,11 @@ export interface ObjectHead {
   sizeBytes?: number;
   /** Motivo cuando el objeto no es accesible (not_found o forbidden). */
   reason?: string;
+  eTag?: string;
+  versionId?: string;
+  storageClass?: string;
+  serverSideEncryption?: string;
+  lastModified?: string;
 }
 
 export interface ObjectStream {
@@ -221,6 +226,19 @@ export function createAwsService(
           exists: true,
           ...(result.ContentLength !== undefined
             ? { sizeBytes: result.ContentLength }
+            : {}),
+          ...(result.ETag !== undefined ? { eTag: result.ETag } : {}),
+          ...(result.VersionId !== undefined
+            ? { versionId: result.VersionId }
+            : {}),
+          ...(result.StorageClass !== undefined
+            ? { storageClass: result.StorageClass }
+            : {}),
+          ...(result.ServerSideEncryption !== undefined
+            ? { serverSideEncryption: result.ServerSideEncryption }
+            : {}),
+          ...(result.LastModified !== undefined
+            ? { lastModified: result.LastModified.toISOString() }
             : {}),
         };
       } catch (error) {

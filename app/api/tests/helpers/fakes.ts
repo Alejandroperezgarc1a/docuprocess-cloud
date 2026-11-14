@@ -147,6 +147,17 @@ export class FakeAws implements AwsService {
     }
     return `https://test-docs-bucket.s3.amazonaws.com/${key}?X-Amz-Signature=fake&X-Amz-Expires=900&content-type=${encodeURIComponent(contentType)}`;
   }
+
+  async presignDownload(
+    key: string,
+    filename: string,
+    contentType: string,
+  ): Promise<string> {
+    if (this.failPresign) {
+      throw new Error('S3 apagado');
+    }
+    return `https://test-docs-bucket.s3.amazonaws.com/${key}?X-Amz-Signature=fake&X-Amz-Expires=900&response-content-type=${encodeURIComponent(contentType)}&response-content-disposition=${encodeURIComponent(`inline; filename*=UTF-8''${encodeURIComponent(filename)}`)}`;
+  }
 }
 
 export interface TestContext {

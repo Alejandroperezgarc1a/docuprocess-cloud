@@ -1,3 +1,5 @@
+/* DocuProcess Cloud frontend styles: layout, light/dark theming, auth views,
+   upload queue, document list, detail dialog and responsive rules. */
 :root {
   color-scheme: light;
   --bg: #f4f7f6;
@@ -287,7 +289,7 @@ button {
   font-size: 0.8rem;
 }
 
-/* Autenticación */
+/* Authentication */
 .auth {
   display: grid;
   grid-template-columns: minmax(0, 1.02fr) minmax(340px, 0.98fr);
@@ -567,7 +569,7 @@ button {
   color: var(--info);
 }
 
-/* Panel */
+/* App panel */
 .app-heading {
   display: flex;
   align-items: flex-end;
@@ -728,6 +730,26 @@ button {
 .document:hover {
   border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
   background: var(--surface);
+}
+
+.document {
+  cursor: pointer;
+}
+
+.document-open {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .document-main {
@@ -1072,7 +1094,7 @@ button {
   }
 }
 
-/* ---------- Header, tema y conexión ---------- */
+/* ---------- Header, theme and connectivity ---------- */
 .header-actions {
   display: flex;
   align-items: center;
@@ -1209,7 +1231,7 @@ button {
   }
 }
 
-/* ---------- Contraseñas ---------- */
+/* ---------- Passwords ---------- */
 .password-field {
   position: relative;
 }
@@ -1296,7 +1318,7 @@ button {
   margin: 0;
 }
 
-/* ---------- Encabezado de la app y filtros ---------- */
+/* ---------- App header and filters ---------- */
 .last-updated {
   min-height: 1.2em;
   margin: 0.35rem 0 0;
@@ -1368,7 +1390,7 @@ button {
   margin-top: 0.6rem;
 }
 
-/* ---------- Documentos ---------- */
+/* ---------- Documents ---------- */
 .document {
   align-items: center;
 }
@@ -1485,7 +1507,7 @@ button {
   }
 }
 
-/* ---------- Cola de subida ---------- */
+/* ---------- Upload queue ---------- */
 .upload-queue-wrap {
   margin-top: 1rem;
   padding-top: 0.85rem;
@@ -1617,7 +1639,7 @@ button {
   gap: 0.25rem;
 }
 
-/* ---------- Drawer de detalle ---------- */
+/* ---------- Detail drawer ---------- */
 body.dialog-open {
   overflow: hidden;
 }
@@ -1700,6 +1722,259 @@ body.dialog-open {
   margin: 0;
 }
 
+/* ---------- Detail dialog: stepper, summary, preview and metadata ---------- */
+.detail-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.detail-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.detail-section {
+  margin-top: 1.1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.detail-section h3 {
+  margin: 0 0 0.65rem;
+  font-size: 0.95rem;
+}
+
+.detail-lifecycle-section {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.lifecycle {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lifecycle-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+  padding-right: 0.4rem;
+}
+
+.lifecycle-step:not(:last-child)::after {
+  position: absolute;
+  top: 0.72rem;
+  right: 0;
+  left: 1.5rem;
+  height: 2px;
+  background: var(--line);
+  content: "";
+}
+
+.lifecycle-step--done:not(:last-child)::after {
+  background: color-mix(in srgb, var(--done) 45%, var(--line));
+}
+
+.lifecycle-dot {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.lifecycle-step--done .lifecycle-dot {
+  border-color: var(--done);
+  background: var(--done-soft);
+  color: var(--done);
+}
+
+.lifecycle-step--current .lifecycle-dot {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 0 0 4px var(--brand-soft);
+}
+
+.lifecycle-step--failed .lifecycle-dot {
+  border-color: var(--failed);
+  background: var(--failed-soft);
+  color: var(--failed);
+}
+
+.lifecycle-label {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.lifecycle-meta {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.detail-summary-block {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--brand) 28%, var(--line));
+  border-radius: 12px;
+  background: var(--brand-soft);
+}
+
+.detail-summary-block h3 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.detail-summary-block p {
+  margin: 0.35rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.detail-summary-note {
+  margin: 0.8rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-style: italic;
+}
+
+.detail-preview-section .preview-body {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.preview-frame {
+  display: block;
+  width: 100%;
+  height: min(58vh, 32rem);
+  border: 0;
+  background: var(--surface);
+}
+
+.preview-image {
+  display: block;
+  max-width: 100%;
+  max-height: min(58vh, 32rem);
+  margin: 0 auto;
+  padding: 0.5rem;
+  object-fit: contain;
+}
+
+.preview-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border-top: 1px solid var(--line);
+}
+
+.preview-note {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.detail-preview-section .processing-note,
+.detail-preview-section .error-box {
+  margin: 0;
+  border-radius: 0;
+}
+
+.detail-details {
+  margin-top: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.detail-details > summary {
+  padding: 0.55rem 0.7rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.detail-details[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.detail-details .detail-grid {
+  padding: 0.7rem;
+}
+
+.page-size-list {
+  max-height: 12rem;
+  margin: 0;
+  padding: 0.55rem 0.7rem 0.65rem 1.7rem;
+  overflow-y: auto;
+  font-size: 0.78rem;
+}
+
+.page-size-list li + li {
+  margin-top: 0.15rem;
+}
+
+.detail-text-preview {
+  max-height: 10rem;
+  margin: 0.7rem 0 0;
+  padding: 0.7rem 0.8rem;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.detail-json pre {
+  max-height: 20rem;
+  margin: 0;
+  padding: 0.8rem;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.copy-button {
+  white-space: nowrap;
+}
+
+.spinner--small {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-width: 2px;
+}
+
 /* ---------- Timeline ---------- */
 .timeline-section {
   margin-top: 1.2rem;
@@ -1710,6 +1985,23 @@ body.dialog-open {
 .timeline-section h3 {
   margin: 0 0 0.7rem;
   font-size: 1rem;
+}
+
+.timeline-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.7rem;
+}
+
+.timeline-head h3 {
+  margin: 0;
+}
+
+.timeline-count {
+  color: var(--muted);
+  font-size: 0.72rem;
 }
 
 .timeline {
@@ -1809,13 +2101,32 @@ body.dialog-open {
   overflow-wrap: anywhere;
 }
 
+.timeline-error {
+  margin: 0.3rem 0 0;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  background: var(--failed-soft);
+  color: var(--failed);
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.timeline-waiting {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.3rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .timeline-empty {
   margin: 0;
   color: var(--muted);
   font-size: 0.85rem;
 }
 
-/* ---------- Responsive de los componentes nuevos ---------- */
+/* ---------- Responsive rules for the new components ---------- */
 @media (max-width: 800px) {
   .detail-dialog {
     width: min(38rem, calc(100vw - 1.5rem));
@@ -1853,6 +2164,35 @@ body.dialog-open {
 
   .document-actions {
     width: 100%;
+  }
+
+  .document-open {
+    flex: 1 1 100%;
+  }
+
+  .lifecycle {
+    grid-template-columns: 1fr;
+    gap: 0.7rem;
+  }
+
+  .lifecycle-step {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 0.65rem;
+    padding-right: 0;
+  }
+
+  .lifecycle-step:not(:last-child)::after {
+    top: 1.55rem;
+    right: auto;
+    bottom: -0.7rem;
+    left: 0.75rem;
+    width: 2px;
+    height: auto;
+  }
+
+  .preview-frame {
+    height: 52vh;
   }
 
   .queue-item {

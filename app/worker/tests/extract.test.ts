@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { describe, it } from 'node:test';
 import {
   extractMetadata,
@@ -42,7 +42,66 @@ describe('extractMetadata', () => {
       assert.equal(result.pages, 1);
       assert.equal(result.sizeBytes, bytes.length);
       assert.match(result.sha256, /^[0-9a-f]{64}$/);
+      assert.match(result.sha1 ?? '', /^[0-9a-f]{40}$/);
+      assert.match(result.md5 ?? '', /^[0-9a-f]{32}$/);
       assert.equal(result.width, undefined);
+      assert.equal(result.metadataVersion, 2);
+      assert.equal(result.metadata?.file.extension, 'pdf');
+      assert.equal(result.metadata?.pdf?.pages, 1);
+      assert.deepEqual(result.metadata?.pdf?.pageSizes?.[0], {
+        page: 1,
+        width: 200,
+        height: 300,
+      });
+      assert.deepEqual(result.metadata?.pdf?.uniformPageSize, {
+        width: 200,
+        height: 300,
+      });
+    });
+  });
+
+  it('extrae metadatos tecnicos, texto y resumen de un PDF', async () => {
+    await withTemp(async (dir) => {
+      const pdf = await PDFDocument.create();
+      const font = await pdf.embedFont(StandardFonts.Helvetica);
+      const page = pdf.addPage([300, 400]);
+      page.drawText('Este informe describe el procesamiento de documentos.', {
+        x: 24,
+        y: 340,
+        size: 11,
+        font,
+      });
+      page.drawText('La aplicacion extrae metadatos tecnicos y genera un resumen.', {
+        x: 24,
+        y: 320,
+        size: 11,
+        font,
+      });
+      pdf.setTitle('Informe de prueba');
+      pdf.setAuthor('Equipo DocuProcess');
+      pdf.setSubject('Metadatos y resumen');
+      pdf.setKeywords(['informe', 'metadatos']);
+      pdf.setCreator('Pruebas automatizadas');
+      pdf.setProducer('pdf-lib');
+      pdf.setCreationDate(new Date('2024-01-02T03:04:05Z'));
+      const bytes = await pdf.save();
+      const path = join(dir, 'informe.pdf');
+      await writeFile(path, bytes);
+
+      const result = await extractMetadata(path, 'application/pdf', 10_000_000);
+
+      assert.equal(result.metadata?.pdf?.title, 'Informe de prueba');
+      assert.equal(result.metadata?.pdf?.author, 'Equipo DocuProcess');
+      assert.equal(result.metadata?.pdf?.subject, 'Metadatos y resumen');
+      assert.equal(result.metadata?.pdf?.creator, 'Pruebas automatizadas');
+      assert.equal(result.metadata?.pdf?.producer, 'pdf-lib');
+      assert.equal(result.metadata?.pdf?.creationDate, '2024-01-02T03:04:05.000Z');
+      assert.equal(result.metadata?.pdf?.encrypted, false);
+      assert.ok((result.metadata?.pdf?.keywords ?? []).join(' ').includes('informe'));
+      assert.equal(result.metadata?.text?.source, 'pdf');
+      assert.equal(result.metadata?.text?.pagesAnalyzed, 1);
+      assert.ok((result.metadata?.text?.words ?? 0) > 5);
+      assert.match(result.summary ?? '', /informe/i);
     });
   });
 
@@ -57,6 +116,9 @@ describe('extractMetadata', () => {
       assert.equal(result.width, 1);
       assert.equal(result.height, 1);
       assert.equal(result.pages, undefined);
+      assert.equal(result.metadata?.image?.format, 'PNG');
+      assert.equal(result.metadata?.image?.bitDepth, 8);
+      assert.equal(result.metadata?.image?.hasAlpha, true);
     });
   });
 
@@ -72,6 +134,32 @@ describe('extractMetadata', () => {
       assert.equal(result.sizeBytes, content.length);
       assert.equal(result.pages, undefined);
       assert.equal(result.width, undefined);
+      assert.equal(result.metadata?.text?.source, 'txt');
+      assert.equal(result.metadata?.text?.newline, 'LF');
+      assert.ok((result.metadata?.text?.words ?? 0) >= 2);
+      assert.equal(typeof result.summary, 'string');
+    });
+  });
+
+  it('detecta BOM y saltos CRLF en un TXT', async () => {
+    await withTemp(async (dir) => {
+      const content = Buffer.from(
+        '\uFEFFPrimera linea del documento.\r\nSegunda linea con mas texto.\r\nTercera linea final.\r\n',
+        'utf8',
+      );
+      const path = join(dir, 'windows.txt');
+      await writeFile(path, content);
+
+      const result = await extractMetadata(path, 'text/plain', 10_000_000);
+
+      assert.equal(result.metadata?.file.extension, 'txt');
+      assert.equal(result.metadata?.text?.bom, true);
+      assert.equal(result.metadata?.text?.newline, 'CRLF');
+      assert.equal(result.metadata?.text?.lines, 4);
+      assert.equal(result.metadata?.text?.paragraphs, 1);
+      assert.ok((result.metadata?.text?.characters ?? 0) > 0);
+      assert.ok(result.metadata?.text?.preview?.includes('Primera linea'));
+      assert.match(result.summary ?? '', /documento/i);
     });
   });
 

@@ -1,7 +1,7 @@
-// Configuración de runtime del frontend.
-// `frontend/scripts/generate-config.mjs` genera `frontend/public/config.js`
-// a partir de este archivo y fuerza `apiBaseUrl: ""` para que la API use el
-// mismo origen (CloudFront enruta `/api/*` al ALB).
+// Runtime configuration for the frontend.
+// `frontend/scripts/generate-config.mjs` generates `frontend/public/config.js`
+// from this file and forces `apiBaseUrl: ""` so the API uses the same origin
+// (CloudFront routes `/api/*` to the ALB).
 window.DOCUPROCESS_CONFIG = {
   apiBaseUrl: ""
 };

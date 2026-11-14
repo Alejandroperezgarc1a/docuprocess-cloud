@@ -113,6 +113,21 @@ export function buildEmail(
             : []),
         ]),
 
+    ...(result?.metadata?.pdf?.title
+      ? [`  Título PDF: ${result.metadata.pdf.title}`]
+      : []),
+
+    ...(result?.summary
+      ? [
+          '',
+          '  Resumen:',
+          ...result.summary
+            .replace(/\s+/g, ' ')
+            .match(/.{1,72}(\s|$)/g)
+            ?.map((line) => `    ${line.trim()}`) ?? [`    ${result.summary}`],
+        ]
+      : []),
+
     `  SHA-256:    ${sha256}`,
     `  ID:         ${pid}`,
 

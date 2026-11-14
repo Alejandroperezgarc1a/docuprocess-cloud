@@ -1,3 +1,5 @@
+// DocuProcess Cloud frontend Vite config: dev/preview servers on fixed ports
+// with an /api proxy to the local API, and a clean dist/ on build.
 import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ mode }) => {

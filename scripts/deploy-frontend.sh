@@ -5,6 +5,7 @@
 #
 # Requisitos:
 #   - AWS CLI autenticado con la misma cuenta del estado de Terraform.
+#   - Si no se define AWS_PROFILE, se usa el perfil 'academy' cuando existe.
 #   - Terraform inicializado y con B2 (bucket) y B7 (CloudFront) aplicados.
 #   - Node.js >= 22.12 y npm.
 #
@@ -59,6 +60,16 @@ if [[ -z "${AWS_REGION:-}" && -z "${AWS_DEFAULT_REGION:-}" ]]; then
 fi
 
 require_cmd aws
+
+# En este proyecto el laboratorio suele estar en el perfil 'academy'. Si el
+# llamador no eligió perfil, se usa ese para no depender de un [default] viejo.
+if [[ -z "${AWS_PROFILE:-}" && -z "${AWS_DEFAULT_PROFILE:-}" ]]; then
+  if aws configure list-profiles 2>/dev/null | grep -qx "academy"; then
+    AWS_PROFILE="academy"
+    export AWS_PROFILE
+    log "AWS_PROFILE no estaba definido; se usa el perfil 'academy'."
+  fi
+fi
 
 log "Comprobando credenciales de AWS..."
 if ! AWS_ACCOUNT="$(aws sts get-caller-identity --query Account --output text 2>"$TMP_DIR/sts.err")"; then

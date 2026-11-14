@@ -45,8 +45,9 @@ sean reales y no código muerto:
 - `frontend/package.json`: `config`, `predev` y `prebuild` generan el archivo automáticamente.
 - El script usa `AWS_REGION`/`AWS_DEFAULT_REGION`; si no están definidas, cae a `us-east-1`, el
   valor por defecto del proyecto. Si se cambia `aws_region`, hay que exportar la misma región.
-- El script no elige perfil de AWS: hereda `AWS_PROFILE`. En este repositorio se validó con
-  `AWS_PROFILE=academy` (cuenta `<AWS_ACCOUNT_ID>`, us-east-1).
+- El script hereda `AWS_PROFILE`; si no se define y existe el perfil `academy`, lo usa
+  automáticamente. En este repositorio se validó con `academy` (cuenta `<AWS_ACCOUNT_ID>`,
+  us-east-1); un `AWS_PROFILE` explícito siempre tiene prioridad.
 
 ## Pruebas
 

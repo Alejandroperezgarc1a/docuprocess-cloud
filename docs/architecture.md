@@ -125,7 +125,8 @@ sequenceDiagram
             DOC-->>W: ConditionalCheckFailed, el documento se omite
         else este worker gana el reclamo
             W->>S3: GetObject en streaming, máximo 10 MB
-            W->>W: MIME por magic bytes, SHA-256, páginas o dimensiones
+            W->>W: MIME por magic bytes, SHA-256/SHA-1/MD5, páginas o dimensiones
+            W->>W: Metadatos técnicos, EXIF/GPS, texto y resumen extractivo
             W->>DOC: Update condicional PROCESSING a DONE con result, o a FAILED con error
             W->>EVT: Put evento de cierre en la misma transacción
             W->>SNS: Publish DocuProcess filename status
@@ -300,7 +301,7 @@ Reglas:
 | `status` | S | `PENDING`, `PROCESSING`, `DONE` o `FAILED` |
 | `createdAt` | S | ISO-8601 UTC con milisegundos: `2026-11-05T14:03:22.123Z` (ordena bien como string) |
 | `updatedAt` | S | Igual formato |
-| `result` | M | Solo en `DONE`: `sizeBytes` (N), `mimeType` (S), `sha256` (S), `pages` (N, PDF), `width` y `height` (N, imágenes) |
+| `result` | M | Solo en `DONE`: resultado del procesamiento (ver 4.2) |
 | `error` | S | Solo en `FAILED` |
 
 Índices:
@@ -351,6 +352,77 @@ El worker escribe `PENDING→PROCESSING`, `PROCESSING→DONE`, `PROCESSING→FAI
 `Update` del documento y el `Put` del evento van en un `TransactWriteItems`; si es `false`, se
 escriben secuencialmente como respaldo del Sandbox.
 
+#### 4.2. Resultado del procesamiento (`result`)
+
+El worker escribe este objeto al pasar a `DONE`. Los campos de primer nivel `sizeBytes`,
+`mimeType`, `sha256`, `pages`, `width` y `height` se conservan para compatibilidad; el detalle
+vive en `metadata`. Los campos opcionales se omiten cuando no aplican.
+
+```json
+{
+  "sizeBytes": 48213,
+  "mimeType": "application/pdf",
+  "sha256": "…64 hex…",
+  "sha1": "…40 hex…",
+  "md5": "…32 hex…",
+  "pages": 3,
+  "summary": "Resumen extractivo de hasta 600 caracteres…",
+  "metadataVersion": 2,
+  "processedAt": "2026-11-13T15:04:05.000Z",
+  "processingMs": 812,
+  "metadataTruncated": false,
+  "metadata": {
+    "file": { "extension": "pdf", "sizeBytes": 48213, "mimeType": "application/pdf", "sha256": "…", "sha1": "…", "md5": "…" },
+    "pdf": {
+      "version": "1.7", "pages": 3,
+      "pageSizes": [{ "page": 1, "width": 595.28, "height": 841.89 }],
+      "uniformPageSize": { "width": 595.28, "height": 841.89 },
+      "title": "Informe", "author": "Equipo", "subject": "…", "keywords": ["…"],
+      "creator": "…", "producer": "…", "creationDate": "…", "modificationDate": "…",
+      "encrypted": false, "hasForm": false, "linearized": true
+    },
+    "image": {
+      "format": "JPEG", "width": 4032, "height": 3024, "aspectRatio": 1.33,
+      "megapixels": 12.2, "colorType": "YCbCr", "bitDepth": 8, "hasAlpha": false,
+      "interlaced": false, "dpi": 72,
+      "textChunks": [{ "keyword": "Comment", "text": "…" }],
+      "exif": { "make": "Apple", "model": "iPhone 13", "dateTimeOriginal": "…", "iso": 64, "fNumber": 1.6, "focalLength": 5.1, "orientation": 6 },
+      "gps": { "latitude": 3.45, "longitude": -76.53, "altitude": 1000 }
+    },
+    "text": {
+      "source": "pdf", "encoding": "utf-8", "bom": false, "newline": "LF",
+      "lines": 120, "words": 950, "characters": 6200, "paragraphs": 14,
+      "pagesAnalyzed": 3, "truncated": false, "preview": "Primeros 400 caracteres…"
+    },
+    "source": {
+      "eTag": "…", "versionId": "…", "storageClass": "STANDARD",
+      "serverSideEncryption": "AES256", "lastModified": "…"
+    }
+  }
+}
+```
+
+Reglas del contrato:
+
+- `summary` es extractivo (no generativo) y solo aparece si hay texto seleccionable. Un PDF
+  escaneado, cifrado o sin fuentes legibles termina `DONE` sin `summary`; no es un fallo.
+  Antes de resumir, `summarize.ts` limpia el texto (une palabras cortadas con guion, descarta
+  encabezados/pies repetidos, números de página y líneas basura) y luego segmenta oraciones
+  protegiendo abreviaturas, decimales, iniciales y URLs. El resumen elige entre 3 y 5 oraciones
+  relevantes y no redundantes (selección MMR) en orden original, con tope de 600 caracteres y
+  sin cortar oraciones a la mitad; si el texto limpio es más corto que el tope, se devuelve
+  completo.
+- El análisis de texto se limita a 40 páginas de PDF o 200 000 caracteres de TXT. Los indicadores
+  `text.pagesAnalyzed` y `text.truncated` informan el recorte.
+- `image.exif` y `image.gps` solo existen para JPEG con EXIF. `gps` se muestra en la app porque
+  el usuario lo pidió explícitamente; conviene tratarlo como dato sensible.
+- `metadataTruncated` indica que el worker eliminó detalles voluminosos (`pdf.pageSizes`,
+  `text.preview`, `image.exif`, `image.textChunks`, `pdf.keywords`, `metadata.text` o
+  `image.gps`) para no superar el límite de 400 KB por ítem de DynamoDB. Los campos de primer
+  nivel y los hashes nunca se eliminan.
+- La extracción de texto y el resumen son *best-effort*: cualquier error se ignora y el
+  documento se marca `DONE` con los metadatos técnicos que sí se pudieron leer.
+
 ```mermaid
 flowchart LR
   API[API] -->|TransactWriteItems| D[(documents)]
@@ -385,6 +457,7 @@ Todas las rutas empiezan por `/api` (CloudFront enruta `/api/*` al ALB). JSON en
 | `GET /api/documents` | Sí | — | `200 {items:[…]}` (máx. 50, más recientes primero) | 401 |
 | `GET /api/documents/{id}` | Sí | — | `200 {…ítem…}` | 401, 404 (no existe o es de otro usuario) |
 | `GET /api/documents/{id}/events` | Sí | — | `200 {items:[…]}` (bitácora ascendente, máx. 200) | 401, 404, 503 |
+| `GET /api/documents/{id}/download` | Sí | — | `200 {url, expiresIn:900, method:"GET", filename, contentType}`; URL prefirmada de S3 con `Content-Disposition: inline` | 401, 404, 409 (aún no está `DONE`), 503 |
 
 Formato de error: `{"error": "<codigo>", "message": "<texto legible>"}`.
 
@@ -496,7 +569,8 @@ DynamoDB Local acepta cualquier credencial; las de arriba (`local`) evitan usar 
 - **Desarrollo:** Vite sirve el frontend en `http://localhost:5500` y reenvía `/api` a `http://localhost:8000`; el navegador ve un solo origen y no requiere CORS para la API.
 - **Producción:** CloudFront sirve `frontend/dist/` en la raíz y enruta `/api/*` al ALB. El frontend usa rutas relativas. El behavior de `/api/*` no debe cachear y debe reenviar `Authorization`, `Content-Type` y `Origin`.
 - **Build y configuración:** `npm ci && npm run build` en `frontend/`; `prebuild` genera `frontend/public/config.js` desde `config.example.js` con `apiBaseUrl: ""` para usar rutas relativas. Se publica `frontend/dist/`, no el código fuente. `./scripts/deploy-frontend.sh` construye, sincroniza el bucket, aplica caché (`no-cache` para `index.html` y `config.js`, larga para assets con hash) e invalida CloudFront con `/*`.
-- **CORS del bucket de documentos:** el `PUT` de la URL prefirmada va directo del navegador a S3. El bucket debe permitir `PUT`, `GET` y `HEAD` desde `http://localhost:5500`, `http://127.0.0.1:5500` y el dominio de CloudFront, con `AllowedHeaders: ["Content-Type"]`.
+- **CORS del bucket de documentos:** el `PUT` de la URL prefirmada va directo del navegador a S3. El bucket debe permitir `PUT`, `GET` y `HEAD` desde `http://localhost:5500`, `http://127.0.0.1:5500` y el dominio de CloudFront, con `AllowedHeaders: ["Content-Type"]`. El `GET` también habilita la vista previa embebida del detalle.
+- **Detalle del documento:** al pulsar una fila (o “Ver detalle”) se abre un `<dialog>` nativo con la línea de vida `PENDING→PROCESSING→DONE/FAILED`, el resumen extractivo, la vista previa embebida (PDF/PNG/JPG/TXT) y todas las secciones de metadatos. La vista previa pide `GET /api/documents/{id}/download` y usa la URL prefirmada de 900 s; solo se solicita cuando el documento está `DONE`. Mientras el documento siga `PENDING` o `PROCESSING` el modal se refresca cada 5 s sin cerrarse ni perder la posición de desplazamiento; al cambiar el estado se anuncia en una región `aria-live`.
 - **Orígenes CORS en B2/B7:** el módulo usa orígenes explícitos (`localhost:5500` y `127.0.0.1:5500`). B7 añade `https://${module.cdn.cloudfront_domain_name}` a `module.storage.cors_allowed_origins` conservando los orígenes locales para el desarrollo. No hay ciclo: el bucket (salida de storage) no depende de la regla CORS; la regla depende del dominio de CloudFront y CloudFront depende del bucket.
 - **Health del ALB:** el target group debe apuntar a `GET /api/health` (superficial: una caída de RDS no recicla las instancias).
 - **Readiness al arrancar:** el userData espera `GET /api/ready` (MySQL) antes de dar por lista la instancia. Si no responde, apaga la API: la instancia nunca queda healthy, el despliegue no avanza y el ASG anterior sigue atendiendo.

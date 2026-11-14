@@ -399,6 +399,67 @@ export const openApiSpec = {
         },
       },
     },
+    // URL temporal de lectura para la vista previa embebida del frontend.
+    '/api/documents/{documentId}/download': {
+      get: {
+        tags: ['Documents'],
+        summary: 'Get a presigned URL to preview a processed document',
+        description:
+          'Validates ownership and returns a short-lived presigned S3 GET URL with inline Content-Disposition. Only DONE documents can be previewed.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'documentId',
+            in: 'path',
+            required: true,
+            description: 'Document UUID v4.',
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Presigned preview URL.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PreviewResponse' },
+              },
+            },
+          },
+          '401': {
+            description: 'Missing, invalid or expired bearer token.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          '404': {
+            description: 'Document not found or owned by another user.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          '409': {
+            description: 'Document is not DONE yet.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          '503': {
+            description: 'DynamoDB or S3 is unavailable.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+        },
+      },
+    },
   },
   components: {
     securitySchemes: {
@@ -523,15 +584,133 @@ export const openApiSpec = {
           expiresIn: { type: 'integer', example: 900 },
         },
       },
+      PreviewResponse: {
+        type: 'object',
+        required: ['url', 'expiresIn', 'method', 'filename', 'contentType'],
+        properties: {
+          url: { type: 'string', format: 'uri' },
+          expiresIn: { type: 'integer', example: 900 },
+          method: { type: 'string', enum: ['GET'] },
+          filename: { type: 'string' },
+          contentType: { type: 'string' },
+        },
+      },
       DocumentResult: {
         type: 'object',
         properties: {
           sizeBytes: { type: 'integer' },
           mimeType: { type: 'string' },
           sha256: { type: 'string' },
+          sha1: { type: 'string' },
+          md5: { type: 'string' },
           pages: { type: 'integer' },
           width: { type: 'integer' },
           height: { type: 'integer' },
+          summary: {
+            type: 'string',
+            description:
+              'Extractive summary of the document text (TXT and PDFs with selectable text).',
+          },
+          metadataVersion: { type: 'integer', example: 2 },
+          processedAt: { type: 'string', format: 'date-time' },
+          processingMs: { type: 'integer' },
+          metadataTruncated: {
+            type: 'boolean',
+            description: 'True when metadata was trimmed to fit DynamoDB limits.',
+          },
+          metadata: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+              file: {
+                type: 'object',
+                additionalProperties: true,
+                properties: {
+                  extension: { type: 'string' },
+                  sizeBytes: { type: 'integer' },
+                  mimeType: { type: 'string' },
+                  sha256: { type: 'string' },
+                  sha1: { type: 'string' },
+                  md5: { type: 'string' },
+                },
+              },
+              pdf: {
+                type: 'object',
+                additionalProperties: true,
+                properties: {
+                  version: { type: 'string', example: '1.7' },
+                  pages: { type: 'integer' },
+                  pageSizes: { type: 'array', items: { type: 'object' } },
+                  uniformPageSize: { type: 'object' },
+                  title: { type: 'string' },
+                  author: { type: 'string' },
+                  subject: { type: 'string' },
+                  keywords: { type: 'array', items: { type: 'string' } },
+                  creator: { type: 'string' },
+                  producer: { type: 'string' },
+                  creationDate: { type: 'string', format: 'date-time' },
+                  modificationDate: { type: 'string', format: 'date-time' },
+                  encrypted: { type: 'boolean' },
+                  hasForm: { type: 'boolean' },
+                  linearized: { type: 'boolean' },
+                },
+              },
+              image: {
+                type: 'object',
+                additionalProperties: true,
+                properties: {
+                  format: { type: 'string', example: 'JPEG' },
+                  width: { type: 'integer' },
+                  height: { type: 'integer' },
+                  aspectRatio: { type: 'number' },
+                  megapixels: { type: 'number' },
+                  colorType: { type: 'string' },
+                  bitDepth: { type: 'integer' },
+                  hasAlpha: { type: 'boolean' },
+                  interlaced: { type: 'boolean' },
+                  dpi: { type: 'integer' },
+                  textChunks: { type: 'array', items: { type: 'object' } },
+                  exif: { type: 'object', additionalProperties: true },
+                  gps: {
+                    type: 'object',
+                    properties: {
+                      latitude: { type: 'number' },
+                      longitude: { type: 'number' },
+                      altitude: { type: 'number' },
+                    },
+                  },
+                },
+              },
+              text: {
+                type: 'object',
+                additionalProperties: true,
+                properties: {
+                  source: { type: 'string', enum: ['txt', 'pdf'] },
+                  encoding: { type: 'string' },
+                  bom: { type: 'boolean' },
+                  newline: { type: 'string', enum: ['LF', 'CRLF', 'CR'] },
+                  lines: { type: 'integer' },
+                  words: { type: 'integer' },
+                  characters: { type: 'integer' },
+                  paragraphs: { type: 'integer' },
+                  pagesAnalyzed: { type: 'integer' },
+                  truncated: { type: 'boolean' },
+                  preview: { type: 'string' },
+                },
+              },
+              source: {
+                type: 'object',
+                additionalProperties: true,
+                properties: {
+                  eTag: { type: 'string' },
+                  versionId: { type: 'string' },
+                  storageClass: { type: 'string' },
+                  serverSideEncryption: { type: 'string' },
+                  lastModified: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
         },
       },
       Document: {

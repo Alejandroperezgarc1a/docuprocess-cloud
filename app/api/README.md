@@ -149,7 +149,16 @@ curl -s -X POST localhost:8000/api/documents \
 # bitacora del documento (sustituir DOCUMENT_ID)
 curl -s localhost:8000/api/documents/DOCUMENT_ID/events \
   -H "Authorization: Bearer $TOKEN"
+
+# URL prefirmada para vista previa/descarga inline (solo si el documento esta DONE)
+curl -s localhost:8000/api/documents/DOCUMENT_ID/download \
+  -H "Authorization: Bearer $TOKEN"
 ```
+
+`GET /api/documents/{id}/download` responde `200` con `{url, expiresIn:900, method:"GET",
+filename, contentType}`. La URL apunta a S3 con `Content-Disposition: inline`; responde
+`409 not_ready` si el documento sigue `PENDING`/`PROCESSING`, `404` si no existe o es de
+otro usuario y `503` si DynamoDB o S3 no responden.
 
 ## Empaquetado para A4
 

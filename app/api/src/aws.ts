@@ -6,7 +6,7 @@ import {
   QueryCommand,
   TransactWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Config } from './config.js';
 import type { DocumentEvent, DocumentItem } from './types.js';
@@ -33,6 +33,12 @@ export interface AwsService {
   queryDocumentEvents(documentId: string): Promise<DocumentEvent[]>;
   /** Creates a pre-signed S3 PUT URL for the given key and content type. */
   presignUpload(key: string, contentType: string): Promise<string>;
+  /** Creates a pre-signed S3 GET URL for inline preview/download. */
+  presignDownload(
+    key: string,
+    filename: string,
+    contentType: string,
+  ): Promise<string>;
 }
 
 /** Builds the production AWS service using SDK v3 clients. */
@@ -159,6 +165,29 @@ export function createAwsService(config: Config): AwsService {
           // Content-Type declarado o S3 rechaza la subida.
           signableHeaders: new Set(['content-type']),
         },
+      );
+    },
+
+    /**
+     * URL firmada de lectura para previsualizar el documento dentro del modal.
+     * `inline` evita que el navegador lo descargue; el nombre se envia en UTF-8
+     * (RFC 5987) para conservar acentos sin romper la cabecera.
+     */
+    async presignDownload(
+      key: string,
+      filename: string,
+      contentType: string,
+    ): Promise<string> {
+      const safeName = filename.replace(/["\\\r\n]/g, '_');
+      return getSignedUrl(
+        s3,
+        new GetObjectCommand({
+          Bucket: config.docsBucket,
+          Key: key,
+          ResponseContentType: contentType,
+          ResponseContentDisposition: `inline; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+        }),
+        { expiresIn: PRESIGN_EXPIRES_SECONDS },
       );
     },
   };

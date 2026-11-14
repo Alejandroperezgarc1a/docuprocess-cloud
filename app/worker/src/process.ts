@@ -7,6 +7,7 @@ import type { WorkerConfig } from './config.js';
 import {
   extractMetadata,
   FileTooLargeError,
+  fitResultForStorage,
   PermanentProcessingError,
 } from './extract.js';
 import { errorFields, type Logger } from './logger.js';
@@ -240,11 +241,29 @@ export async function processItem(
       deps.config.maxFileBytes,
       deps.tempRoot,
     );
+    const extractionStarted = Date.now();
     const result: DocumentResult = await extractMetadata(
       temp.filePath,
       item.contentType,
       deps.config.maxFileBytes,
     );
+
+    // Metadatos de origen S3 y tiempos que solo conoce el worker.
+    if (result.metadata !== undefined) {
+      result.metadata.source = {
+        ...(head.eTag !== undefined ? { eTag: head.eTag } : {}),
+        ...(head.versionId !== undefined ? { versionId: head.versionId } : {}),
+        ...(head.storageClass !== undefined ? { storageClass: head.storageClass } : {}),
+        ...(head.serverSideEncryption !== undefined
+          ? { serverSideEncryption: head.serverSideEncryption }
+          : {}),
+        ...(head.lastModified !== undefined ? { lastModified: head.lastModified } : {}),
+      };
+    }
+    const completedAt = deps.now?.() ?? new Date();
+    result.processedAt = completedAt.toISOString();
+    result.processingMs = Date.now() - extractionStarted;
+    fitResultForStorage(result);
 
     if (result.mimeType !== item.contentType) {
       deps.logger.warn('mime_type_mismatch', {

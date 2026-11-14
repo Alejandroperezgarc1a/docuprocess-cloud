@@ -1,6 +1,6 @@
 # DocuProcess Cloud
 
-DocuProcess Cloud es un SaaS que procesa de forma asíncrona los documentos e imágenes que suben sus usuarios. El usuario sube el archivo directamente a S3 mediante una URL prefirmada; un worker lo toma de una cola lógica en DynamoDB, extrae sus metadatos (tamaño, tipo MIME, SHA-256, número de páginas o dimensiones), registra cada cambio de estado en una bitácora auditable y avisa por SNS cuando termina. La plataforma se despliega en AWS (us-east-1) con Terraform dentro del Sandbox de AWS Academy, respetando sus restricciones: sin IAM propio, sin Lambda, con instancias y bases de datos pequeñas y con credenciales temporales.
+DocuProcess Cloud es un SaaS que procesa de forma asíncrona los documentos e imágenes que suben sus usuarios. El usuario sube el archivo directamente a S3 mediante una URL prefirmada; un worker lo toma de una cola lógica en DynamoDB, extrae metadatos técnicos (tamaño, tipo MIME, SHA-256/SHA-1/MD5, número de páginas o dimensiones, propiedades del PDF, EXIF/GPS de imágenes y estadísticas de texto), genera un resumen extractivo cuando hay texto seleccionable, registra cada cambio de estado en una bitácora auditable y avisa por SNS cuando termina. La plataforma se despliega en AWS (us-east-1) con Terraform dentro del Sandbox de AWS Academy, respetando sus restricciones: sin IAM propio, sin Lambda, con instancias y bases de datos pequeñas y con credenciales temporales.
 
 Proyecto final del curso Infraestructura III, Universidad ICESI.
 
@@ -126,7 +126,7 @@ terraform -chdir=infra init && terraform -chdir=infra apply
 # Revisar el correo de AWS y confirmar la suscripción de SNS antes de probar las alertas.
 ```
 
-`deploy-frontend.sh` comprueba las credenciales y la cuenta, lee los outputs de B2/B7, genera `frontend/public/config.js`, construye el frontend y publica `frontend/dist/` con cabeceras de caché e invalidación. Falla antes de escribir si el estado de Terraform es de otra cuenta o si B7 no está aplicado. La evidencia de B9 está en la sección de verificación de la guía operativa.
+`deploy-frontend.sh` comprueba las credenciales y la cuenta, lee los outputs de B2/B7, genera `frontend/public/config.js`, construye el frontend y publica `frontend/dist/` con cabeceras de caché e invalidación. Si no se define `AWS_PROFILE`, usa el perfil `academy` cuando existe; un perfil explícito siempre tiene prioridad. Falla antes de escribir si el estado de Terraform es de otra cuenta o si B7 no está aplicado. La evidencia de B9 está en la sección de verificación de la guía operativa.
 
 La prueba de carga del ASG está en `scripts/load-test.sh` (sección 5.8 de la guía operativa).
 
@@ -189,10 +189,13 @@ El frontend queda en `http://localhost:5500`. Vite reenvía `/api` a
 `http://localhost:8000`, así que no hace falta CORS en desarrollo.
 
 La interfaz incluye subida múltiple con progreso, cancelar y reintentar; búsqueda,
-filtros por estado/tipo y orden; detalle en diálogo con enlace directo y línea de
-tiempo de auditoría; tema claro/oscuro/sistema; toasts y aviso de sin conexión; y
-atajos de teclado (`/` para buscar, `u` para elegir archivo). El código se organiza
-en `app.js` (orquestación) y `src/` (`api.js`, `upload.js`, `ui.js`).
+filtros por estado/tipo y orden; detalle en diálogo con enlace directo, línea de vida
+`Pendiente → Procesando → Listo/Fallido`, línea de tiempo de auditoría, resumen del
+texto, vista previa embebida (PDF/PNG/JPG/TXT) y todas las secciones de metadatos con
+opción de copiar hashes o ver el JSON completo; tema claro/oscuro/sistema; toasts y
+aviso de sin conexión; y atajos de teclado (`/` para buscar, `u` para elegir archivo).
+El código se organiza en `app.js` (orquestación) y `src/` (`api.js`, `upload.js`,
+`ui.js`).
 
 `config.js` es configuración de runtime: se genera desde `config.example.js` con
 `apiBaseUrl: ""` (mismo origen) y está ignorado por git. En desarrollo, si defines

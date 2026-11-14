@@ -305,6 +305,94 @@ describe('documents', () => {
     });
   });
 
+  it('firma la vista previa de un documento DONE propio', async () => {
+    const context = makeApp();
+    const { headers } = await registerAndLogin(context.app);
+    const created = await createDocument(context, headers);
+    const documentId = created.body.documentId as string;
+    const item = context.aws.documents.get(documentId);
+    assert.ok(item);
+    context.aws.documents.set(documentId, { ...item, status: 'DONE' });
+
+    const response = await request(context.app)
+      .get(`/api/documents/${documentId}/download`)
+      .set(headers);
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.method, 'GET');
+    assert.equal(response.body.expiresIn, 900);
+    assert.equal(response.body.filename, item.filename);
+    assert.equal(response.body.contentType, item.contentType);
+    assert.match(String(response.body.url), /X-Amz-Signature=fake/);
+  });
+
+  it('no firma la vista previa de un documento PENDING', async () => {
+    const context = makeApp();
+    const { headers } = await registerAndLogin(context.app);
+    const created = await createDocument(context, headers);
+
+    const response = await request(context.app)
+      .get(`/api/documents/${String(created.body.documentId)}/download`)
+      .set(headers);
+
+    assert.equal(response.status, 409);
+    assert.equal(response.body.error, 'not_ready');
+  });
+
+  it('404 en la vista previa de otro usuario, inexistente o mal formada', async () => {
+    const context = makeApp();
+    const userA = await registerAndLogin(context.app, 'a@example.com');
+    const userB = await registerAndLogin(context.app, 'b@example.com');
+    const created = await createDocument(context, userA.headers);
+    const documentId = created.body.documentId as string;
+    const item = context.aws.documents.get(documentId);
+    assert.ok(item);
+    context.aws.documents.set(documentId, { ...item, status: 'DONE' });
+
+    const responses = await Promise.all([
+      request(context.app)
+        .get(`/api/documents/${documentId}/download`)
+        .set(userB.headers),
+      request(context.app)
+        .get(`/api/documents/${randomUUID()}/download`)
+        .set(userA.headers),
+      request(context.app)
+        .get('/api/documents/no-es-uuid/download')
+        .set(userA.headers),
+    ]);
+
+    for (const response of responses) {
+      assert.equal(response.status, 404);
+      assert.equal(response.body.error, 'not_found');
+    }
+  });
+
+  it('503 si falla DynamoDB o S3 al preparar la vista previa', async () => {
+    const context = makeApp();
+    const { headers } = await registerAndLogin(context.app);
+    const created = await createDocument(context, headers);
+    const documentId = created.body.documentId as string;
+    const item = context.aws.documents.get(documentId);
+    assert.ok(item);
+    context.aws.documents.set(documentId, { ...item, status: 'DONE' });
+
+    context.aws.failGet = true;
+    const getFailed = await request(context.app)
+      .get(`/api/documents/${documentId}/download`)
+      .set(headers);
+    context.aws.failGet = false;
+
+    context.aws.failPresign = true;
+    const presignFailed = await request(context.app)
+      .get(`/api/documents/${documentId}/download`)
+      .set(headers);
+
+    for (const response of [getFailed, presignFailed]) {
+      assert.equal(response.status, 503);
+      assert.equal(response.body.error, 'storage_unavailable');
+    }
+  });
+
   it('devuelve 503 si DynamoDB falla al crear', async () => {
     const context = makeApp();
     const { headers } = await registerAndLogin(context.app);

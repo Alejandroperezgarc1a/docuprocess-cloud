@@ -1,3 +1,5 @@
+// DocuProcess Cloud frontend entry point: wires the API client, S3 uploader
+// and UI helpers into the auth, upload queue, document list and detail flows.
 import {
   ApiError,
   SessionExpiredError,
@@ -55,6 +57,111 @@ const ACTOR_LABELS = {
   system: "Sistema"
 };
 
+const DATE_KEYS = new Set([
+  "creationDate",
+  "modificationDate",
+  "lastModified",
+  "processedAt",
+  "dateTimeOriginal",
+  "createDate",
+  "modifyDate"
+]);
+
+const LABELS = {
+  file: {
+    extension: "Extensión",
+    sizeBytes: "Tamaño",
+    mimeType: "Tipo MIME"
+  },
+  pdf: {
+    version: "Versión PDF",
+    pages: "Páginas",
+    uniformPageSize: "Tamaño de página",
+    title: "Título",
+    author: "Autor",
+    subject: "Asunto",
+    keywords: "Palabras clave",
+    creator: "Creador",
+    producer: "Productor",
+    creationDate: "Fecha de creación",
+    modificationDate: "Última modificación",
+    encrypted: "Cifrado",
+    hasForm: "Formulario",
+    linearized: "Optimizado para web"
+  },
+  image: {
+    format: "Formato",
+    width: "Ancho",
+    height: "Alto",
+    aspectRatio: "Relación de aspecto",
+    megapixels: "Megapíxeles",
+    colorType: "Color",
+    bitDepth: "Profundidad",
+    hasAlpha: "Canal alfa",
+    interlaced: "Entrelazado",
+    dpi: "Resolución"
+  },
+  text: {
+    source: "Origen",
+    encoding: "Codificación",
+    bom: "BOM",
+    newline: "Fin de línea",
+    lines: "Líneas",
+    words: "Palabras",
+    characters: "Caracteres",
+    paragraphs: "Párrafos",
+    pagesAnalyzed: "Páginas analizadas",
+    truncated: "Análisis truncado"
+  },
+  source: {
+    eTag: "ETag",
+    versionId: "Versión S3",
+    storageClass: "Clase de almacenamiento",
+    serverSideEncryption: "Cifrado en reposo",
+    lastModified: "Modificado en S3"
+  },
+  exif: {
+    make: "Fabricante",
+    model: "Modelo",
+    lensModel: "Objetivo",
+    software: "Software",
+    artist: "Autor",
+    copyright: "Copyright",
+    description: "Descripción",
+    dateTimeOriginal: "Fecha de captura",
+    createDate: "Fecha de creación",
+    modifyDate: "Fecha de modificación",
+    exposureTime: "Exposición",
+    fNumber: "Apertura",
+    iso: "ISO",
+    focalLength: "Distancia focal",
+    focalLength35mm: "Focal 35 mm",
+    orientation: "Orientación",
+    colorSpace: "Espacio de color",
+    flash: "Flash",
+    whiteBalance: "Balance de blancos",
+    meteringMode: "Medición",
+    exposureProgram: "Programa"
+  },
+  processing: {
+    metadataVersion: "Versión de metadatos",
+    processedAt: "Procesado",
+    processingMs: "Duración",
+    metadataTruncated: "Metadatos recortados"
+  }
+};
+
+const ORIENTATION_LABELS = {
+  1: "Normal",
+  2: "Espejo horizontal",
+  3: "Rotada 180°",
+  4: "Espejo vertical",
+  5: "Espejo y rotada 90°",
+  6: "Rotada 90°",
+  7: "Espejo y rotada 270°",
+  8: "Rotada 270°"
+};
+
 const state = {
   token: readStoredToken(),
   email: "",
@@ -69,6 +176,12 @@ const state = {
   detailEventsLoading: false,
   detailEventsError: "",
   detailTrigger: null,
+  detailSignature: "",
+  detailStatus: "",
+  detailPreviewId: null,
+  detailPreviewUrl: "",
+  detailPreviewError: "",
+  detailPreviewLoading: false,
   pendingDetailId: null,
   pollTimer: null,
   clockTimer: null,
@@ -140,8 +253,10 @@ const el = {
   detailCard: document.getElementById("detail-card"),
   detailTitle: document.getElementById("detail-title"),
   detailSummary: document.getElementById("detail-summary"),
+  detailBadges: document.getElementById("detail-badges"),
   detailClose: document.getElementById("detail-close"),
   detailContent: document.getElementById("detail-content"),
+  detailLive: document.getElementById("detail-live"),
   toastRegion: document.getElementById("toast-region")
 };
 
@@ -156,7 +271,7 @@ const theme = createThemeController({
   meta: document.querySelector('meta[name="theme-color"]')
 });
 
-/* Sesión */
+/* Session */
 function readStoredToken() {
   try {
     return sessionStorage.getItem(TOKEN_KEY) || "";
@@ -169,7 +284,7 @@ function saveToken(token) {
   try {
     sessionStorage.setItem(TOKEN_KEY, token);
   } catch (_error) {
-    /* sessionStorage puede estar deshabilitado; la sesión vive en memoria. */
+    /* sessionStorage may be disabled; the session lives in memory. */
   }
 }
 
@@ -177,7 +292,7 @@ function clearStoredToken() {
   try {
     sessionStorage.removeItem(TOKEN_KEY);
   } catch (_error) {
-    /* sin almacenamiento disponible */
+    /* no storage available */
   }
 }
 
@@ -211,7 +326,7 @@ function handleSessionExpired() {
   toast("Tu sesión venció. Inicia sesión de nuevo.", { kind: "error" });
 }
 
-/* Mensajes y vistas */
+/* Messages and views */
 function setMessage(node, text, kind = "error") {
   if (!text) {
     node.hidden = true;
@@ -307,7 +422,7 @@ function setAuthBusy(busy) {
   el.registerForm.setAttribute("aria-busy", String(busy));
 }
 
-/* Autenticación */
+/* Authentication */
 async function handleLogin(event) {
   event.preventDefault();
   if (state.authBusy) return;
@@ -412,7 +527,7 @@ function handleLogout() {
   toast("Sesión cerrada.", { kind: "info" });
 }
 
-/* Contraseñas */
+/* Passwords */
 function bindPasswordToggles() {
   document.querySelectorAll("[data-password-toggle]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -461,7 +576,7 @@ function updatePasswordStrength() {
       : `Fortaleza: ${labels[score]}.`;
 }
 
-/* Archivos y subida */
+/* Files and uploads */
 function getFileType(file) {
   const type = String(file.type || "").toLowerCase();
   if (type === "image/jpg") return "image/jpeg";
@@ -759,7 +874,7 @@ function updateUploadButton() {
   el.uploadSubmit.textContent = navigator.onLine ? "Añadir a la cola" : "Sin conexión";
 }
 
-/* Lista y detalle */
+/* List and detail */
 function isActiveStatus(status) {
   return status === "PENDING" || status === "PROCESSING";
 }
@@ -871,9 +986,17 @@ function typeIconSvg(key) {
 
 function renderDocumentItem(doc) {
   const info = documentType(doc);
+  const label = doc.filename || "el documento";
 
   const item = document.createElement("li");
   item.className = "document";
+  item.tabIndex = 0;
+  item.setAttribute("aria-label", `Ver detalle de ${label}`);
+
+  const openButton = document.createElement("button");
+  openButton.type = "button";
+  openButton.className = "document-open";
+  openButton.setAttribute("aria-label", `Ver detalle de ${label}`);
 
   const icon = document.createElement("span");
   icon.className = `document-icon document-icon--${info.key}`;
@@ -903,6 +1026,7 @@ function renderDocumentItem(doc) {
   meta.append(sizeTag);
 
   main.append(name, meta);
+  openButton.append(icon, main);
 
   const actions = document.createElement("div");
   actions.className = "document-actions";
@@ -912,7 +1036,7 @@ function renderDocumentItem(doc) {
   detailButton.type = "button";
   detailButton.className = "btn btn-secondary btn-small";
   detailButton.textContent = "Ver detalle";
-  detailButton.setAttribute("aria-label", `Ver detalle de ${doc.filename || "el documento"}`);
+  detailButton.setAttribute("aria-label", `Ver detalle de ${label}`);
   detailButton.disabled = !doc.documentId;
   detailButton.addEventListener("click", () => {
     state.detailTrigger = detailButton;
@@ -920,7 +1044,26 @@ function renderDocumentItem(doc) {
   });
   actions.append(detailButton);
 
-  item.append(icon, main, actions);
+  const openFromRow = (event) => {
+    if (event.target.closest("button, a, input, select, textarea")) return;
+    if (!doc.documentId) return;
+    state.detailTrigger = item;
+    openDetail(doc.documentId);
+  };
+
+  openButton.addEventListener("click", () => {
+    state.detailTrigger = openButton;
+    openDetail(doc.documentId);
+  });
+  item.addEventListener("click", openFromRow);
+  item.addEventListener("keydown", (event) => {
+    if (event.target !== item) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    openFromRow(event);
+  });
+
+  item.append(openButton, actions);
   return item;
 }
 
@@ -1108,7 +1251,7 @@ function schedulePoll() {
   }, POLL_MS);
 }
 
-/* Detalle */
+/* Detail */
 function parseDetailHash() {
   const match = window.location.hash.match(/^#\/documents\/([^/]+)$/);
   return match ? decodeURIComponent(match[1]) : null;
@@ -1126,16 +1269,30 @@ function cleanupDetail({ keepTrigger = false } = {}) {
   state.detailEvents = [];
   state.detailEventsLoading = false;
   state.detailEventsError = "";
+  state.detailSignature = "";
+  state.detailStatus = "";
+  resetPreview();
   el.detailContent.replaceChildren();
   el.detailTitle.textContent = "Detalle del documento";
   el.detailSummary.textContent = "";
+  el.detailBadges.replaceChildren();
+  el.detailLive.textContent = "";
   document.body.classList.remove("dialog-open");
   if (!keepTrigger) state.detailTrigger = null;
+}
+
+function resetPreview(id = null) {
+  state.detailPreviewId = id;
+  state.detailPreviewUrl = "";
+  state.detailPreviewError = "";
+  state.detailPreviewLoading = false;
 }
 
 function renderDetailLoading() {
   el.detailTitle.textContent = "Detalle del documento";
   el.detailSummary.textContent = "Cargando información…";
+  el.detailBadges.replaceChildren();
+  state.detailSignature = "";
 
   const note = document.createElement("p");
   note.className = "processing-note";
@@ -1148,6 +1305,8 @@ function renderDetailLoading() {
 
 function renderDetailError(message) {
   el.detailSummary.textContent = "";
+  el.detailBadges.replaceChildren();
+  state.detailSignature = "";
   const box = document.createElement("p");
   box.className = "error-box";
   box.textContent = message;
@@ -1187,9 +1346,666 @@ function copyButton(text, label = "Copiar") {
   return button;
 }
 
+function humanLabel(key) {
+  const spaced = String(key)
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function labelFor(key, labels) {
+  return (labels && labels[key]) || humanLabel(key);
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date);
+}
+
+function formatMetadataValue(key, value) {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "boolean") return value ? "Sí" : "No";
+  if (DATE_KEYS.has(key)) return formatDate(value);
+
+  if (key === "sizeBytes") return formatBytes(value);
+  if (key === "dpi") return `${Number(value).toLocaleString("es-CO")} DPI`;
+  if (key === "aspectRatio") return `${Number(value).toFixed(2)} : 1`;
+  if (key === "megapixels") return `${Number(value).toLocaleString("es-CO")} MP`;
+  if (key === "bitDepth") return `${value} bits`;
+  if (key === "width" || key === "height") return `${value} px`;
+  if (key === "processingMs") {
+    return value < 1000 ? `${value} ms` : `${(value / 1000).toFixed(2)} s`;
+  }
+  if (key === "exposureTime") {
+    const seconds = Number(value);
+    if (!Number.isFinite(seconds)) return String(value);
+    return seconds > 0 && seconds < 1 ? `1/${Math.round(1 / seconds)} s` : `${seconds} s`;
+  }
+  if (key === "fNumber") return `f/${value}`;
+  if (key === "focalLength" || key === "focalLength35mm") return `${value} mm`;
+  if (key === "orientation") return ORIENTATION_LABELS[value] || `Orientación ${value}`;
+  if (key === "source" && (value === "txt" || value === "pdf")) return value.toUpperCase();
+  if (key === "newline") return value === "CRLF" ? "CRLF (Windows)" : value === "CR" ? "CR (clásico)" : "LF (Unix)";
+  if (key === "storageClass") return String(value);
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "—";
+    return value.map((entry) => (isPlainObject(entry) ? JSON.stringify(entry) : String(entry))).join(", ");
+  }
+  if (isPlainObject(value)) {
+    if ("width" in value && "height" in value) {
+      return `${value.width} × ${value.height} pt`;
+    }
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number") return value.toLocaleString("es-CO");
+  return String(value);
+}
+
+function createMetadataSection(title) {
+  const section = document.createElement("section");
+  section.className = "detail-section";
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  section.append(heading);
+  return section;
+}
+
+function renderKeyValueSection(title, object, labels, skip = []) {
+  if (!isPlainObject(object)) return null;
+  const entries = Object.entries(object).filter(([key, value]) => {
+    if (skip.includes(key)) return false;
+    if (value === null || value === undefined || value === "") return false;
+    if (Array.isArray(value) && value.length === 0) return false;
+    if (isPlainObject(value) && Object.keys(value).length === 0) return false;
+    return true;
+  });
+  if (entries.length === 0) return null;
+
+  const section = createMetadataSection(title);
+  const list = document.createElement("dl");
+  list.className = "detail-grid";
+  for (const [key, value] of entries) {
+    const rendered = formatMetadataValue(key, value);
+    const full = rendered.length > 70 || key === "subject" || key === "description";
+    addDetailRow(list, labelFor(key, labels), rendered, full);
+  }
+  section.append(list);
+  return section;
+}
+
+function renderPageSizes(pageSizes) {
+  if (!Array.isArray(pageSizes) || pageSizes.length === 0) return null;
+  const details = document.createElement("details");
+  details.className = "detail-details";
+
+  const summary = document.createElement("summary");
+  summary.textContent = `Tamaños por página (${pageSizes.length})`;
+  details.append(summary);
+
+  const list = document.createElement("ul");
+  list.className = "page-size-list";
+  pageSizes.forEach((size) => {
+    const item = document.createElement("li");
+    item.textContent = `Página ${size.page}: ${size.width} × ${size.height} pt`;
+    list.append(item);
+  });
+
+  details.append(list);
+  return details;
+}
+
+function renderTextChunks(chunks) {
+  if (!Array.isArray(chunks) || chunks.length === 0) return null;
+  const details = document.createElement("details");
+  details.className = "detail-details";
+
+  const summary = document.createElement("summary");
+  summary.textContent = `Textos incrustados (${chunks.length})`;
+  details.append(summary);
+
+  const list = document.createElement("dl");
+  list.className = "detail-grid";
+  chunks.forEach((chunk) => {
+    addDetailRow(list, chunk.keyword || "Texto", chunk.text || "—", true);
+  });
+
+  details.append(list);
+  return details;
+}
+
+function renderHashes(result) {
+  const hashes = [
+    ["SHA-256", result.sha256],
+    ["SHA-1", result.sha1],
+    ["MD5", result.md5]
+  ].filter(([, value]) => typeof value === "string" && value.length > 0);
+  if (hashes.length === 0) return null;
+
+  const section = createMetadataSection("Integridad");
+  const list = document.createElement("dl");
+  list.className = "detail-grid";
+
+  hashes.forEach(([label, value]) => {
+    const wrapper = document.createElement("div");
+    wrapper.className = "detail-copy";
+
+    const code = document.createElement("code");
+    code.className = "sha";
+    code.textContent = value;
+    wrapper.append(code, copyButton(value, `Copiar ${label}`));
+
+    addDetailRow(list, label, wrapper, true);
+  });
+
+  section.append(list);
+  return section;
+}
+
+function renderLifecycle(doc) {
+  const section = createMetadataSection("Estado del procesamiento");
+  section.classList.add("detail-lifecycle-section");
+
+  const events = state.detailEvents.slice().sort((a, b) => {
+    return new Date(eventTimeValue(a) || 0).getTime() - new Date(eventTimeValue(b) || 0).getTime();
+  });
+  const firstEvent = (status) => events.find((event) => event.toStatus === status);
+  const failed = doc.status === "FAILED";
+  const rank = { PENDING: 0, PROCESSING: 1, DONE: 2, FAILED: 2 };
+  const currentRank = rank[doc.status] ?? 0;
+
+  const steps = [
+    {
+      status: "PENDING",
+      label: "Recibido",
+      hint: "Documento registrado y en cola.",
+      at: doc.createdAt || eventTimeValue(firstEvent("PENDING") || {})
+    },
+    {
+      status: "PROCESSING",
+      label: "Procesando",
+      hint: "Extrayendo metadatos y resumen.",
+      at: eventTimeValue(firstEvent("PROCESSING") || {})
+    },
+    failed
+      ? {
+          status: "FAILED",
+          label: "Fallido",
+          hint: doc.error || "No se pudo procesar el documento.",
+          at: eventTimeValue(firstEvent("FAILED") || {}) || (doc.status === "FAILED" ? doc.updatedAt : "")
+        }
+      : {
+          status: "DONE",
+          label: "Listo",
+          hint: "Metadatos y vista previa disponibles.",
+          at: eventTimeValue(firstEvent("DONE") || {})
+        }
+  ];
+
+  const list = document.createElement("ol");
+  list.className = "lifecycle";
+  list.setAttribute("aria-label", "Estados del documento");
+
+  steps.forEach((step) => {
+    const reached =
+      step.status === "PENDING" ||
+      Boolean(step.at) ||
+      currentRank > (rank[step.status] ?? 0) ||
+      doc.status === step.status;
+    const current = doc.status === step.status;
+
+    let kind = "pending";
+    if (step.status === "FAILED") kind = "failed";
+    else if (current) kind = "current";
+    else if (reached) kind = "done";
+
+    const item = document.createElement("li");
+    item.className = `lifecycle-step lifecycle-step--${kind}`;
+    if (current) item.setAttribute("aria-current", "step");
+
+    const dot = document.createElement("span");
+    dot.className = "lifecycle-dot";
+    dot.setAttribute("aria-hidden", "true");
+    if (kind === "done") {
+      dot.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 7"/></svg>';
+    } else if (kind === "failed") {
+      dot.textContent = "!";
+    } else if (kind === "current" && doc.status === "PROCESSING") {
+      dot.innerHTML = '<span class="spinner spinner--small" aria-hidden="true"></span>';
+    }
+
+    const body = document.createElement("div");
+    body.className = "lifecycle-body";
+
+    const label = document.createElement("p");
+    label.className = "lifecycle-label";
+    label.textContent = step.label;
+
+    const meta = document.createElement("p");
+    meta.className = "lifecycle-meta";
+    if (step.at) {
+      const time = createTime(step.at);
+      meta.append(time);
+    } else {
+      meta.textContent = reached && step.status !== "PROCESSING" ? "Completado" : step.hint;
+    }
+
+    body.append(label, meta);
+    item.append(dot, body);
+    list.append(item);
+  });
+
+  section.append(list);
+  return section;
+}
+
+function renderSummarySection(doc, result) {
+  if (!result) return null;
+  if (typeof result.summary === "string" && result.summary.trim()) {
+    const section = document.createElement("section");
+    section.className = "detail-summary-block";
+    const heading = document.createElement("h3");
+    heading.textContent = "Resumen";
+    const text = document.createElement("p");
+    text.textContent = result.summary;
+    section.append(heading, text);
+    return section;
+  }
+
+  const type = documentType(doc);
+  const hasTextSource =
+    result.metadata && (result.metadata.pdf || result.metadata.text);
+  if (doc.status === "DONE" && hasTextSource && (type.key === "pdf" || type.key === "txt")) {
+    const note = document.createElement("p");
+    note.className = "detail-summary-note";
+    note.textContent =
+      type.key === "pdf"
+        ? "No se pudo extraer texto seleccionable: el PDF puede estar escaneado, cifrado o contener solo imágenes."
+        : "No hay texto suficiente para generar un resumen.";
+    return note;
+  }
+  return null;
+}
+
+function previewKind(doc) {
+  const type = documentType(doc).key;
+  if (type === "pdf" || type === "png" || type === "jpg" || type === "txt") return type;
+  return "other";
+}
+
+function updatePreviewBody() {
+  const body = document.getElementById("detail-preview-body");
+  if (!body) return;
+  body.replaceChildren();
+
+  if (state.detailPreviewLoading) {
+    const note = document.createElement("p");
+    note.className = "processing-note";
+    const spinner = document.createElement("span");
+    spinner.className = "spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    note.append(spinner, document.createTextNode("Preparando la vista previa…"));
+    body.append(note);
+    return;
+  }
+
+  if (state.detailPreviewError) {
+    const box = document.createElement("p");
+    box.className = "error-box";
+    box.textContent = state.detailPreviewError;
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "btn btn-secondary btn-small";
+    retry.textContent = "Reintentar vista previa";
+    retry.addEventListener("click", () => {
+      state.detailPreviewError = "";
+      ensurePreview(state.detail);
+    });
+    box.append(document.createElement("br"), retry);
+    body.append(box);
+    return;
+  }
+
+  if (!state.detailPreviewUrl || !state.detail) {
+    body.append(document.createTextNode("La vista previa no está disponible."));
+    return;
+  }
+
+  const kind = previewKind(state.detail);
+  const url = state.detailPreviewUrl;
+  const filename = state.detail.filename || "documento";
+
+  if (kind === "png" || kind === "jpg") {
+    const image = document.createElement("img");
+    image.className = "preview-image";
+    image.src = url;
+    image.alt = `Vista previa de ${filename}`;
+    image.loading = "lazy";
+    body.append(image);
+  } else if (kind === "pdf" || kind === "txt") {
+    const frame = document.createElement("iframe");
+    frame.className = "preview-frame";
+    frame.src = url;
+    frame.title = `Vista previa de ${filename}`;
+    frame.loading = "lazy";
+    body.append(frame);
+  } else {
+    const note = document.createElement("p");
+    note.className = "detail-summary-note";
+    note.textContent = "Este tipo de archivo no se puede previsualizar dentro de la app.";
+    body.append(note);
+  }
+
+  const footer = document.createElement("div");
+  footer.className = "preview-footer";
+
+  const link = document.createElement("a");
+  link.className = "btn btn-secondary btn-small";
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = "Abrir en pestaña nueva";
+
+  const note = document.createElement("span");
+  note.className = "preview-note";
+  note.textContent = "Enlace temporal de 15 minutos.";
+
+  footer.append(link, note);
+  body.append(footer);
+}
+
+async function ensurePreview(doc) {
+  if (!doc || doc.status !== "DONE") return;
+  const id = doc.documentId;
+  if (!id) return;
+
+  if (state.detailPreviewId !== id) resetPreview(id);
+
+  if (state.detailPreviewLoading || state.detailPreviewUrl || state.detailPreviewError) {
+    updatePreviewBody();
+    return;
+  }
+
+  state.detailPreviewLoading = true;
+  updatePreviewBody();
+
+  try {
+    const data = await apiFetch(`/api/documents/${encodeURIComponent(id)}/download`);
+    if (state.detailPreviewId !== id) return;
+    if (!data || typeof data.url !== "string" || !data.url) {
+      throw new ApiError("La API no devolvió una URL de vista previa.", "invalid_response", 0);
+    }
+    state.detailPreviewUrl = data.url;
+    state.detailPreviewError = "";
+  } catch (error) {
+    if (error instanceof SessionExpiredError) return;
+    if (state.detailPreviewId === id) {
+      state.detailPreviewError =
+        error.message || "No se pudo preparar la vista previa.";
+    }
+  } finally {
+    if (state.detailPreviewId === id) {
+      state.detailPreviewLoading = false;
+      updatePreviewBody();
+    }
+  }
+}
+
+function renderPreviewSection(doc) {
+  if (doc.status !== "DONE") return null;
+  const kind = previewKind(doc);
+  if (kind === "other") return null;
+
+  const section = createMetadataSection("Vista previa");
+  section.classList.add("detail-preview-section");
+
+  const body = document.createElement("div");
+  body.id = "detail-preview-body";
+  body.className = "preview-body";
+  section.append(body);
+
+  updatePreviewBody();
+  ensurePreview(doc);
+  return section;
+}
+
+function renderPdfSection(pdf) {
+  if (!isPlainObject(pdf)) return null;
+  const section = renderKeyValueSection("Documento PDF", pdf, LABELS.pdf, [
+    "pageSizes"
+  ]);
+  if (!section) return null;
+
+  const sizes = renderPageSizes(pdf.pageSizes);
+  if (sizes) section.append(sizes);
+  return section;
+}
+
+function renderImageSection(image) {
+  if (!isPlainObject(image)) return null;
+  const section = renderKeyValueSection("Imagen", image, LABELS.image, [
+    "exif",
+    "gps",
+    "textChunks"
+  ]);
+  if (!section) return null;
+
+  const chunks = renderTextChunks(image.textChunks);
+  if (chunks) section.append(chunks);
+  return section;
+}
+
+function renderExifSection(exif) {
+  return renderKeyValueSection("EXIF de la cámara", exif, LABELS.exif);
+}
+
+function renderGpsSection(gps) {
+  if (!isPlainObject(gps)) return null;
+  const latitude = Number(gps.latitude);
+  const longitude = Number(gps.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+  const section = createMetadataSection("Ubicación GPS");
+  const list = document.createElement("dl");
+  list.className = "detail-grid";
+
+  addDetailRow(list, "Latitud", latitude.toFixed(6));
+  addDetailRow(list, "Longitud", longitude.toFixed(6));
+  if (gps.altitude !== undefined && gps.altitude !== null) {
+    addDetailRow(list, "Altitud", `${Number(gps.altitude).toFixed(1)} m`);
+  }
+
+  const link = document.createElement("a");
+  link.className = "btn btn-secondary btn-small";
+  link.href = `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=15/${latitude}/${longitude}`;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = "Ver en el mapa";
+  addDetailRow(list, "Mapa", link);
+
+  section.append(list);
+  return section;
+}
+
+function renderTextSection(text) {
+  if (!isPlainObject(text)) return null;
+  const section = renderKeyValueSection("Texto", text, LABELS.text, ["preview"]);
+  if (!section) return null;
+
+  if (typeof text.preview === "string" && text.preview.trim()) {
+    const preview = document.createElement("p");
+    preview.className = "detail-text-preview";
+    preview.textContent = text.preview;
+    section.append(preview);
+  }
+
+  if (text.truncated) {
+    const note = document.createElement("p");
+    note.className = "detail-summary-note";
+    note.textContent = "El análisis se limitó a una parte del contenido para acotar el tamaño del resultado.";
+    section.append(note);
+  }
+
+  return section;
+}
+
+function renderSourceSection(source) {
+  return renderKeyValueSection("Origen en S3", source, LABELS.source);
+}
+
+function renderProcessingSection(result) {
+  const data = {};
+  if (result.metadataVersion !== undefined) data.metadataVersion = result.metadataVersion;
+  if (result.processedAt !== undefined) data.processedAt = result.processedAt;
+  if (result.processingMs !== undefined) data.processingMs = result.processingMs;
+  if (result.metadataTruncated !== undefined) {
+    data.metadataTruncated = result.metadataTruncated;
+  }
+  return renderKeyValueSection("Procesamiento", data, LABELS.processing);
+}
+
+function renderLegacySection(result) {
+  const list = document.createElement("dl");
+  list.className = "detail-grid";
+
+  if (result.mimeType) addDetailRow(list, "Tipo", result.mimeType);
+  if (result.sizeBytes !== undefined) addDetailRow(list, "Tamaño", formatBytes(result.sizeBytes));
+  if (result.pages !== undefined) addDetailRow(list, "Páginas", String(result.pages));
+  if (result.width !== undefined || result.height !== undefined) {
+    const width = result.width ?? "?";
+    const height = result.height ?? "?";
+    addDetailRow(list, "Dimensiones", `${width} × ${height} px`);
+  }
+
+  if (list.children.length === 0) return null;
+  const section = createMetadataSection("Archivo");
+  section.append(list);
+  return section;
+}
+
+function renderMetadataSections(container, doc, result) {
+  if (!result || typeof result !== "object") return;
+
+  const metadata =
+    result.metadata && typeof result.metadata === "object" ? result.metadata : null;
+  const knownMetadata = new Set(["file", "pdf", "image", "text", "source", "metadataTruncated"]);
+
+  if (metadata) {
+    const sections = [
+      renderKeyValueSection("Archivo", metadata.file, LABELS.file, [
+        "sha256",
+        "sha1",
+        "md5"
+      ]),
+      renderPdfSection(metadata.pdf),
+      renderImageSection(metadata.image),
+      renderExifSection(metadata.image && metadata.image.exif),
+      renderGpsSection(metadata.image && metadata.image.gps),
+      renderTextSection(metadata.text),
+      renderSourceSection(metadata.source)
+    ].filter(Boolean);
+
+    sections.forEach((section) => container.append(section));
+
+    // Cualquier bloque nuevo que agregue el worker se muestra sin tocar el frontend.
+    Object.entries(metadata).forEach(([key, value]) => {
+      if (knownMetadata.has(key) || !isPlainObject(value)) return;
+      const section = renderKeyValueSection(humanLabel(key), value);
+      if (section) container.append(section);
+    });
+  } else {
+    const legacy = renderLegacySection(result);
+    if (legacy) container.append(legacy);
+  }
+
+  const hashes = renderHashes(result);
+  if (hashes) container.append(hashes);
+
+  const processing = renderProcessingSection(result);
+  if (processing) container.append(processing);
+
+  const knownResult = new Set([
+    "sizeBytes",
+    "mimeType",
+    "sha256",
+    "sha1",
+    "md5",
+    "pages",
+    "width",
+    "height",
+    "summary",
+    "metadataVersion",
+    "processedAt",
+    "processingMs",
+    "metadata",
+    "metadataTruncated"
+  ]);
+  const extras = Object.fromEntries(
+    Object.entries(result).filter(([key, value]) => {
+      return !knownResult.has(key) && value !== undefined && value !== null && key !== "metadata";
+    })
+  );
+  if (Object.keys(extras).length > 0) {
+    const section = renderKeyValueSection("Otros datos", extras);
+    if (section) container.append(section);
+  }
+}
+
+function renderJsonSection(doc) {
+  const details = document.createElement("details");
+  details.className = "detail-details detail-json";
+
+  const summary = document.createElement("summary");
+  summary.textContent = "Ver JSON completo";
+  details.append(summary);
+
+  const pre = document.createElement("pre");
+  const code = document.createElement("code");
+  code.textContent = JSON.stringify(doc, null, 2);
+  pre.append(code);
+  details.append(pre);
+  return details;
+}
+
+function renderDetailActions(doc) {
+  const bar = document.createElement("div");
+  bar.className = "detail-toolbar";
+
+  if (doc.documentId) {
+    bar.append(copyButton(doc.documentId, "Copiar ID"));
+  }
+
+  bar.append(
+    copyButton(JSON.stringify(doc, null, 2), "Copiar JSON")
+  );
+
+  const refresh = document.createElement("button");
+  refresh.type = "button";
+  refresh.className = "btn btn-quiet btn-small";
+  refresh.textContent = "Actualizar";
+  refresh.addEventListener("click", () => refreshDetail());
+  bar.append(refresh);
+
+  return bar;
+}
+
+function detailSignature(doc) {
+  return JSON.stringify({
+    doc,
+    events: state.detailEvents,
+    eventsError: state.detailEventsError
+  });
+}
+
 function renderTimeline() {
   const container = document.getElementById("timeline");
   if (!container) return;
+
+  const count = document.getElementById("timeline-count");
+  if (count) {
+    const total = state.detailEvents.length;
+    count.textContent = total === 1 ? "1 evento" : `${total} eventos`;
+  }
 
   if (state.detailEventsError) {
     const box = document.createElement("p");
@@ -1268,35 +2084,52 @@ function renderTimeline() {
       body.append(reason);
     }
 
+    if (event.error) {
+      const error = document.createElement("p");
+      error.className = "timeline-error";
+      error.textContent = event.error;
+      body.append(error);
+    }
+
     item.append(dot, body);
     list.append(item);
   });
 
   container.replaceChildren(list);
+
+  if (state.detail && isActiveStatus(state.detail.status)) {
+    const waiting = document.createElement("p");
+    waiting.className = "timeline-waiting";
+    const spinner = document.createElement("span");
+    spinner.className = "spinner spinner--small";
+    spinner.setAttribute("aria-hidden", "true");
+    waiting.append(spinner, document.createTextNode("Esperando el siguiente evento…"));
+    container.append(waiting);
+  }
 }
 
 function renderDetail(doc) {
   const info = documentType(doc);
   const size = documentSize(doc);
+  const result = doc.result && typeof doc.result === "object" ? doc.result : null;
+  const scrollTop = el.detailContent.scrollTop;
 
   el.detailTitle.textContent = doc.filename || "Detalle del documento";
-  el.detailSummary.textContent = `${info.label} · ${formatBytes(size)} · ${formatRelativeTime(doc.createdAt)}`;
+  el.detailSummary.textContent = `${info.label} · ${formatBytes(size)} · ${formatDate(doc.createdAt)}`;
+
+  const typeTag = document.createElement("span");
+  typeTag.className = "tag tag--type";
+  typeTag.textContent = info.label;
+
+  const sizeTag = document.createElement("span");
+  sizeTag.className = "tag";
+  sizeTag.textContent = formatBytes(size);
+
+  el.detailBadges.replaceChildren(statusBadge(doc.status), typeTag, sizeTag);
+
   el.detailContent.replaceChildren();
-
-  const head = document.createElement("div");
-  head.className = "detail-head";
-  head.append(statusBadge(doc.status));
-
-  const date = document.createElement("span");
-  date.className = "detail-date";
-  date.textContent = formatDate(doc.createdAt);
-  head.append(date);
-
-  if (doc.documentId) {
-    head.append(copyButton(doc.documentId, "Copiar ID"));
-  }
-
-  el.detailContent.append(head);
+  el.detailContent.append(renderDetailActions(doc));
+  el.detailContent.append(renderLifecycle(doc));
 
   if (isActiveStatus(doc.status)) {
     const note = document.createElement("p");
@@ -1307,46 +2140,21 @@ function renderDetail(doc) {
     const text =
       doc.status === "PENDING"
         ? "En cola. El worker tomará el documento en breve."
-        : "Procesando el archivo. Los metadatos aparecerán aquí.";
+        : "Procesando el archivo. Los metadatos y el resumen aparecerán aquí.";
     note.append(spinner, document.createTextNode(text));
     el.detailContent.append(note);
   }
 
-  const result = doc.result && typeof doc.result === "object" ? doc.result : null;
-  const list = document.createElement("dl");
-  list.className = "detail-grid";
+  const summary = renderSummarySection(doc, result);
+  if (summary) el.detailContent.append(summary);
 
-  addDetailRow(list, "Tipo", result && result.mimeType ? result.mimeType : doc.contentType || "—");
-
-  if (result && result.sizeBytes !== undefined && result.sizeBytes !== null) {
-    addDetailRow(list, "Tamaño", formatBytes(result.sizeBytes));
-  } else if (size) {
-    addDetailRow(list, "Tamaño", formatBytes(size));
+  const preview = renderPreviewSection(doc);
+  if (preview) {
+    el.detailContent.append(preview);
+    updatePreviewBody();
   }
 
-  if (result && result.pages !== undefined && result.pages !== null) {
-    addDetailRow(list, "Páginas", String(result.pages));
-  }
-
-  if (result && (result.width !== undefined || result.height !== undefined)) {
-    const width = result.width !== undefined && result.width !== null ? result.width : "?";
-    const height = result.height !== undefined && result.height !== null ? result.height : "?";
-    addDetailRow(list, "Dimensiones", `${width} × ${height} px`);
-  }
-
-  if (result && result.sha256) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "detail-copy";
-
-    const code = document.createElement("code");
-    code.className = "sha";
-    code.textContent = result.sha256;
-    wrapper.append(code, copyButton(result.sha256, "Copiar SHA-256"));
-
-    addDetailRow(list, "SHA-256", wrapper, true);
-  }
-
-  el.detailContent.append(list);
+  renderMetadataSections(el.detailContent, doc, result);
 
   if (doc.error) {
     const box = document.createElement("p");
@@ -1359,23 +2167,38 @@ function renderDetail(doc) {
   timelineSection.className = "timeline-section";
   timelineSection.setAttribute("aria-labelledby", "timeline-title");
 
+  const timelineHead = document.createElement("div");
+  timelineHead.className = "timeline-head";
+
   const timelineTitle = document.createElement("h3");
   timelineTitle.id = "timeline-title";
   timelineTitle.textContent = "Actividad";
 
+  const timelineCount = document.createElement("span");
+  timelineCount.id = "timeline-count";
+  timelineCount.className = "timeline-count";
+
+  timelineHead.append(timelineTitle, timelineCount);
+
   const timeline = document.createElement("div");
   timeline.id = "timeline";
 
-  timelineSection.append(timelineTitle, timeline);
+  timelineSection.append(timelineHead, timeline);
   el.detailContent.append(timelineSection);
-
   renderTimeline();
+
+  el.detailContent.append(renderJsonSection(doc));
+
+  el.detailContent.scrollTop = scrollTop;
+  state.detailSignature = detailSignature(doc);
+  state.detailStatus = doc.status;
 }
 
 async function refreshDetail({ silent = false } = {}) {
   const id = state.detailId;
   if (!id) return;
 
+  const previousStatus = state.detailStatus;
   state.detailEventsLoading = true;
 
   const [detailResult, eventsResult] = await Promise.allSettled([
@@ -1389,7 +2212,6 @@ async function refreshDetail({ silent = false } = {}) {
 
   if (detailResult.status === "fulfilled") {
     state.detail = detailResult.value;
-    renderDetail(state.detail);
   } else if (!silent && !(detailResult.reason instanceof SessionExpiredError)) {
     state.detail = null;
     renderDetailError(detailResult.reason?.message || "No se pudo cargar el detalle.");
@@ -1404,7 +2226,18 @@ async function refreshDetail({ silent = false } = {}) {
       eventsResult.reason?.message || "No se pudo cargar la actividad del documento.";
   }
 
-  renderTimeline();
+  if (state.detail) {
+    const signature = detailSignature(state.detail);
+    if (signature !== state.detailSignature || !el.detailContent.firstChild) {
+      renderDetail(state.detail);
+    }
+
+    if (previousStatus && previousStatus !== state.detail.status) {
+      el.detailLive.textContent = `El documento ahora está ${statusInfo(
+        state.detail.status
+      ).label.toLowerCase()}.`;
+    }
+  }
 }
 
 async function openDetail(id, { push = true } = {}) {
@@ -1414,6 +2247,9 @@ async function openDetail(id, { push = true } = {}) {
     state.detail = null;
     state.detailEvents = [];
     state.detailEventsError = "";
+    state.detailSignature = "";
+    state.detailStatus = "";
+    resetPreview();
   }
 
   state.detailId = id;
@@ -1445,7 +2281,7 @@ function closeDetail({ updateHash = true } = {}) {
   if (updateHash) clearDetailHash();
 }
 
-/* Filtros */
+/* Filters */
 function resetFilters({ render = true } = {}) {
   state.filters = { query: "", status: "all", type: "all", sort: "date-desc" };
   el.searchInput.value = "";
@@ -1460,7 +2296,7 @@ function updateFilterVisibility() {
   el.clearFilters.hidden = !filtersAreActive();
 }
 
-/* Tema y conexión */
+/* Theme and connectivity */
 function handleThemeToggle() {
   const preference = theme.cycle();
   toast(`Tema ${THEME_LABELS[preference]}.`, { kind: "info", duration: 1800 });
@@ -1471,14 +2307,14 @@ function setOnlineState(online) {
   updateUploadButton();
 }
 
-/* Atajos */
+/* Shortcuts */
 function isTypingTarget(target) {
   if (!target) return false;
   const tag = target.tagName;
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
 }
 
-/* Eventos */
+/* Events */
 function bindEvents() {
   el.loginForm.addEventListener("submit", handleLogin);
   el.registerForm.addEventListener("submit", handleRegister);

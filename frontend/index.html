@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- DocuProcess Cloud frontend: single-page UI for authentication, direct S3 uploads and document processing status. -->
 <html lang="es">
 <head>
   <meta charset="UTF-8">
@@ -240,6 +241,7 @@
           <p class="eyebrow">Documento</p>
           <h2 id="detail-title" tabindex="-1">Detalle del documento</h2>
           <p id="detail-summary" class="card-sub"></p>
+          <div id="detail-badges" class="detail-badges"></div>
         </div>
         <button id="detail-close" class="icon-button" type="button" aria-label="Cerrar detalle">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -248,10 +250,7 @@
         </button>
       </header>
       <div id="detail-content" class="detail-content"></div>
-      <section id="timeline-section" class="timeline-section">
-        <h3 id="timeline-title" class="timeline-title">Actividad</h3>
-        <div id="timeline" class="timeline"></div>
-      </section>
+      <div id="detail-live" class="sr-only" role="status" aria-live="polite"></div>
     </div>
   </dialog>
 
